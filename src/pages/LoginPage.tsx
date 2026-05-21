@@ -10,7 +10,6 @@ import { useAuthStore, useLanguageStore, useNotificationStore } from '@/stores';
 import { detectApiBaseFromLocation, normalizeApiBase } from '@/utils/connection';
 import { LANGUAGE_LABEL_KEYS, LANGUAGE_ORDER } from '@/utils/constants';
 import { isSupportedLanguage } from '@/utils/language';
-import { INLINE_LOGO_JPEG } from '@/assets/logoInline';
 import type { ApiError } from '@/types';
 import styles from './LoginPage.module.scss';
 
@@ -185,9 +184,9 @@ export function LoginPage() {
       {/* 左侧品牌展示区 */}
       <div className={styles.brandPanel}>
         <div className={styles.brandContent}>
-          <span className={styles.brandWord}>CLI</span>
-          <span className={styles.brandWord}>PROXY</span>
-          <span className={styles.brandWord}>API</span>
+          <span className={styles.brandWord}>CLAUDE</span>
+          <span className={styles.brandWord}>RELAY</span>
+          <span className={styles.brandWord}>POOL</span>
         </div>
       </div>
 
@@ -196,9 +195,9 @@ export function LoginPage() {
         {showSplash ? (
           /* 启动动画 */
           <div className={styles.splashContent}>
-            <img src={INLINE_LOGO_JPEG} alt="CPAMC" className={styles.splashLogo} />
-            <h1 className={styles.splashTitle}>{t('splash.title')}</h1>
-            <p className={styles.splashSubtitle}>{t('splash.subtitle')}</p>
+            <div className={styles.splashLogo} aria-hidden="true">CR</div>
+            <h1 className={styles.splashTitle}>Claude Relay Console</h1>
+            <p className={styles.splashSubtitle}>正在连接账号池控制台</p>
             <div className={styles.splashLoader}>
               <div className={styles.splashLoaderBar} />
             </div>
@@ -207,13 +206,13 @@ export function LoginPage() {
           /* 登录表单 */
           <div className={styles.formContent}>
             {/* Logo */}
-            <img src={INLINE_LOGO_JPEG} alt="Logo" className={styles.logo} />
+            <div className={styles.logo} aria-hidden="true">CR</div>
 
             {/* 登录表单卡片 */}
             <div className={styles.loginCard}>
               <div className={styles.loginHeader}>
                 <div className={styles.titleRow}>
-                  <div className={styles.title}>{t('title.login')}</div>
+                  <div className={styles.title}>Claude Relay Console</div>
                   <Select
                     className={styles.languageSelect}
                     value={language}
@@ -223,7 +222,7 @@ export function LoginPage() {
                     ariaLabel={t('language.switch')}
                   />
                 </div>
-                <div className={styles.subtitle}>{t('login.subtitle')}</div>
+                <div className={styles.subtitle}>登录后管理 Claude 账号池、OAuth 授权和反代策略</div>
               </div>
 
               <div className={styles.connectionBox}>

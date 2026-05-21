@@ -32,9 +32,17 @@
 .aboutLogo {
   width: 108px;
   height: 108px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 26px;
-  object-fit: cover;
+  border: 1px solid var(--border-color);
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, var(--bg-primary));
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: 0;
 }
 
 .aboutTitle {
@@ -43,7 +51,7 @@
   font-weight: 800;
   line-height: 1.12;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   text-align: center;
   text-wrap: balance;
   white-space: normal;
@@ -359,7 +367,7 @@
     font-size: clamp(22px, 6.6vw, 34px);
     font-weight: 700;
     line-height: 1.18;
-    letter-spacing: -0.012em;
+    letter-spacing: 0;
   }
 }
 
@@ -369,6 +377,6 @@
     font-size: clamp(20px, 7.2vw, 28px);
     font-weight: 600;
     line-height: 1.22;
-    letter-spacing: -0.006em;
+    letter-spacing: 0;
   }
 }

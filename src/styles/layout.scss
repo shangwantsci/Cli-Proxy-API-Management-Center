@@ -449,6 +449,18 @@
     flex-shrink: 0;
   }
 
+  .sidebar-brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 12%, var(--bg-secondary));
+    border: 1px solid color-mix(in srgb, var(--primary-color) 24%, var(--border-color));
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+
   .sidebar-brand-title {
     min-width: 0;
     overflow: hidden;

@@ -57,6 +57,17 @@
   color: var(--text-tertiary);
 }
 
+.textLink {
+  color: var(--primary-color);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 .oauthSection {
   display: flex;
   flex-direction: column;

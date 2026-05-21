@@ -1,567 +1,515 @@
-@use 'sass:color';
 @use '../styles/variables.scss' as *;
-
-// ─── Container ──────────────────────────────────────────
 
 .dashboard {
   display: flex;
   flex-direction: column;
   gap: $spacing-xl;
-  max-width: 1000px;
+  width: min(1380px, 100%);
   margin: 0 auto;
-  position: relative;
 }
 
-// ─── Decorative Background Orbs ─────────────────────────
-
-.backgroundOrbs {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-  opacity: 0.42;
-  filter: blur(16px);
+.hero,
+.importPanel,
+.strategyPanel,
+.accountSection {
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  border-radius: $radius-lg;
 }
-
-.orb1 {
-  position: absolute;
-  width: 420px;
-  height: 420px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--primary-color) 6%, transparent),
-    transparent 70%
-  );
-  top: -140px;
-  right: -80px;
-  animation: orbFloat 22s ease-in-out infinite alternate;
-}
-
-.orb2 {
-  position: absolute;
-  width: 320px;
-  height: 320px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--success-color) 4%, transparent),
-    transparent 70%
-  );
-  bottom: 18%;
-  left: -100px;
-  animation: orbFloat 28s ease-in-out infinite alternate-reverse;
-}
-
-@keyframes orbFloat {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  100% {
-    transform: translate(30px, -20px) scale(1.1);
-  }
-}
-
-// ─── Hero Welcome Section ───────────────────────────────
 
 .hero {
-  position: relative;
-  z-index: 1;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: $spacing-lg;
-  padding: $spacing-2xl $spacing-xl;
-  border-radius: $radius-lg;
-  --glass-blur: 12px;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--bg-primary) 92%, transparent),
-    color-mix(in srgb, var(--bg-secondary) 80%, transparent)
-  );
-  border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
-  backdrop-filter: var(--glass-backdrop-filter);
-  -webkit-backdrop-filter: var(--glass-backdrop-filter);
-  overflow: hidden;
-  animation: heroEnter 0.6s ease-out both;
+  padding: $spacing-xl;
 
-  @media (max-width: $breakpoint-mobile) {
+  h1 {
+    margin: $spacing-xs 0;
+    color: var(--text-primary);
+    font-size: 30px;
+    line-height: 1.18;
+    letter-spacing: 0;
+  }
+
+  p {
+    max-width: 780px;
+    margin: 0;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  @media (max-width: 820px) {
+    align-items: flex-start;
     flex-direction: column;
-    align-items: flex-start;
-    padding: $spacing-xl $spacing-lg;
   }
 }
 
-// Large watermark text behind hero content
-.heroWatermark {
-  position: absolute;
-  top: 50%;
-  left: $spacing-xl;
-  transform: translateY(-50%);
-  font-size: 104px;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0;
-  text-transform: uppercase;
-  color: var(--text-primary);
-  opacity: 0.04;
-  white-space: nowrap;
-  pointer-events: none;
-  user-select: none;
-  animation: watermarkEnter 0.8s ease-out 0.1s both;
-
-  @media (max-width: $breakpoint-mobile) {
-    font-size: 58px;
-    left: $spacing-lg;
-  }
-}
-
-@keyframes watermarkEnter {
-  from {
-    opacity: 0;
-    transform: translateY(-50%) translateX(-20px);
-  }
-  to {
-    opacity: 0.04;
-    transform: translateY(-50%) translateX(0);
-  }
-}
-
-.heroContent {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-xs;
-}
-
-.heroGreeting {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: uppercase;
+.kicker {
   color: var(--primary-color);
-  animation: fadeSlideUp 0.5s ease-out 0.1s both;
-}
-
-.heroTitle {
-  margin: 0;
-  font-size: 44px;
+  font-size: 12px;
   font-weight: 800;
-  line-height: 1.1;
   letter-spacing: 0;
-  color: var(--text-primary);
-  animation: fadeSlideUp 0.5s ease-out 0.2s both;
-
-  @media (max-width: $breakpoint-mobile) {
-    font-size: 34px;
-  }
-}
-
-.heroCaring {
-  margin: $spacing-xs 0 0;
-  font-size: 15px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  animation: fadeSlideUp 0.5s ease-out 0.3s both;
-}
-
-// ─── Hero Meta (right side) ─────────────────────────────
-
-.heroMeta {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: $spacing-sm;
-  flex-shrink: 0;
-  animation: fadeSlideUp 0.5s ease-out 0.35s both;
-
-  @media (max-width: $breakpoint-mobile) {
-    align-items: flex-start;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: $spacing-sm;
-  }
-}
-
-.dateTimeBlock {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-
-  @media (max-width: $breakpoint-mobile) {
-    align-items: flex-start;
-  }
-}
-
-.time {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-
-.date {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-// ─── Connection Pill ────────────────────────────────────
-
-.connectionPill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: $radius-full;
-  --glass-blur: 8px;
-  background: var(--glass-bg-secondary);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: var(--glass-backdrop-filter);
-  -webkit-backdrop-filter: var(--glass-backdrop-filter);
-  font-size: 12px;
-}
-
-.statusDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: $gray-400;
-  flex-shrink: 0;
-
-  &.connected {
-    background: $success-color;
-    box-shadow: 0 0 6px rgba($success-color, 0.5);
-  }
-
-  &.connecting {
-    background: $warning-color;
-    animation: pulse 1s ease-in-out infinite;
-  }
-
-  &.disconnected {
-    background: $error-color;
-  }
-}
-
-.pillText {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.buildDate {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  text-align: right;
-
-  @media (max-width: $breakpoint-mobile) {
-    text-align: left;
-  }
-}
-
-// ─── Bento Stats Grid ───────────────────────────────────
-
-.statsSection {
-  position: relative;
-  z-index: 1;
-}
-
-.sectionHeading {
-  font-size: 12px;
-  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0;
-  color: var(--text-tertiary);
-  margin: 0 0 $spacing-md;
 }
 
-.bentoGrid {
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  flex: 0 0 auto;
+}
+
+.statsGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: auto auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: $spacing-md;
 
-  @media (max-width: 900px) {
-    grid-template-columns: repeat(2, 1fr);
+  @media (max-width: 1120px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  @media (max-width: 500px) {
+  @media (max-width: 620px) {
     grid-template-columns: 1fr;
   }
 }
 
-.bentoCard {
+.statCard {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-md;
+  min-height: 132px;
+  padding: $spacing-lg;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-lg;
+  background: var(--bg-primary);
+}
+
+.statIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, var(--bg-secondary));
+  border-radius: $radius-md;
+  flex: 0 0 auto;
+}
+
+.toneneutral {
+  border-color: var(--border-color);
+}
+
+.tonegood .statIcon {
+  color: $success-color;
+  background: rgba($success-color, 0.12);
+}
+
+.tonewarn .statIcon {
+  color: $warning-color;
+  background: rgba($warning-color, 0.12);
+}
+
+.tonedanger .statIcon {
+  color: $error-color;
+  background: rgba($error-color, 0.12);
+}
+
+.statValue {
+  color: var(--text-primary);
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.statLabel {
+  margin-top: $spacing-xs;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.statDetail {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.82fr) minmax(0, 1.18fr);
+  gap: $spacing-md;
+
+  @media (max-width: 1080px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.importPanel,
+.strategyPanel,
+.accountSection {
+  padding: $spacing-lg;
+}
+
+.panelHeader,
+.sectionHeader,
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: $spacing-lg;
+
+  h2 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 18px;
+    letter-spacing: 0;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+}
+
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--primary-color);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.strategyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: $spacing-sm;
+
+  @media (max-width: 780px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.strategyItem {
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  gap: 6px;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
+
+  span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  small {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.connectionBadge {
+  max-width: 420px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  font-family: $font-mono;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.accountGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: $spacing-md;
+
+  @media (max-width: 1220px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.accountCard {
   display: flex;
   flex-direction: column;
   gap: $spacing-md;
   padding: $spacing-lg;
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--bg-primary) 86%, transparent),
-    color-mix(in srgb, var(--bg-secondary) 72%, transparent)
-  );
-  border: 1px solid color-mix(in srgb, var(--border-color) 66%, transparent);
-  border-radius: $radius-lg;
-  --glass-blur: 12px;
-  backdrop-filter: var(--glass-backdrop-filter);
-  -webkit-backdrop-filter: var(--glass-backdrop-filter);
-  box-shadow:
-    0 18px 42px rgb(0 0 0 / 0.12),
-    inset 0 1px 0 rgb(255 255 255 / 0.03);
-  text-decoration: none;
-  transition:
-    border-color $transition-fast,
-    box-shadow $transition-fast,
-    transform $transition-fast;
-  animation: cardEnter 0.4s ease-out both;
-
-  &:hover {
-    border-color: color-mix(in srgb, var(--border-hover) 82%, transparent);
-    box-shadow:
-      0 22px 48px rgb(0 0 0 / 0.16),
-      inset 0 1px 0 rgb(255 255 255 / 0.04);
-    transform: translateY(-2px);
-  }
-}
-
-// First card spans 2 rows — the "hero stat"
-.bentoLarge {
-  grid-row: 1 / 3;
-  justify-content: center;
-  background: linear-gradient(
-    160deg,
-    color-mix(in srgb, var(--primary-color) 8%, var(--bg-primary)),
-    color-mix(in srgb, var(--bg-primary) 84%, transparent)
-  );
-
-  .bentoValue {
-    font-size: 44px;
-  }
-
-  .bentoIcon {
-    width: 56px;
-    height: 56px;
-  }
-
-  @media (max-width: 900px) {
-    grid-row: auto;
-
-    .bentoValue {
-      font-size: 32px;
-    }
-
-    .bentoIcon {
-      width: 44px;
-      height: 44px;
-    }
-  }
-}
-
-.bentoIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
+  border: 1px solid var(--border-color);
   border-radius: $radius-md;
-  background: color-mix(in srgb, var(--primary-color) 10%, var(--bg-secondary));
-  color: var(--primary-color);
-  transition: background $transition-fast;
+  background: var(--bg-secondary);
+  min-width: 0;
 }
 
-.bentoCard:hover .bentoIcon {
-  background: color-mix(in srgb, var(--primary-color) 16%, var(--bg-secondary));
-}
-
-.bentoContent {
+.accountTop {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.bentoValue {
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-
-.bentoLabel {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.bentoSublabel {
-  font-size: 11px;
-  color: var(--text-secondary);
-  opacity: 0.7;
-  margin-top: 2px;
-}
-
-// ─── Config Pills Section ───────────────────────────────
-
-.configSection {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-md;
-  animation: cardEnter 0.4s ease-out 0.5s both;
-}
-
-.configPillGrid {
-  display: flex;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: $spacing-sm;
-}
 
-.configPill {
-  display: inline-flex;
-  align-items: center;
-  gap: $spacing-sm;
-  padding: 6px 14px;
-  background: color-mix(in srgb, var(--bg-primary) 68%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border-color) 68%, transparent);
-  border-radius: $radius-full;
-  --glass-blur: 10px;
-  backdrop-filter: var(--glass-backdrop-filter);
-  -webkit-backdrop-filter: var(--glass-backdrop-filter);
-  font-size: 13px;
-  transition: border-color $transition-fast;
-
-  &:hover {
-    border-color: color-mix(in srgb, var(--border-hover) 82%, transparent);
+  h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 16px;
+    line-height: 1.25;
+    letter-spacing: 0;
+    word-break: break-word;
   }
 }
 
-.configPillWide {
-  flex-basis: 100%;
-  border-radius: $radius-md;
-}
-
-.configPillLabel {
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.configPillValue {
-  font-weight: 600;
-  color: var(--text-primary);
-
-  &.on {
-    color: $success-color;
-  }
-
-  &.off {
-    color: var(--text-secondary);
-  }
-}
-
-.configPillMono {
-  font-size: 12px;
+.fileName {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-tertiary);
   font-family: $font-mono;
-  color: var(--text-secondary);
+  font-size: 11px;
   word-break: break-all;
 }
 
-// Config badges (routing strategy)
-.configBadge {
+.statusPill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 8px;
-  border-radius: $radius-full;
+  min-width: 64px;
+  padding: 4px 9px;
+  border-radius: $radius-md;
   border: 1px solid var(--border-color);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  font-size: 12px;
+  font-weight: 800;
   white-space: nowrap;
 }
 
-.configBadgeRoundRobin {
-  color: var(--primary-color);
-  border-color: rgba($primary-color, 0.24);
-  background: rgba($primary-color, 0.12);
-}
-
-.configBadgeFillFirst {
+.active {
   color: $success-color;
-  border-color: rgba($success-color, 0.3);
-  background: rgba($success-color, 0.12);
+  border-color: rgba($success-color, 0.34);
+  background: rgba($success-color, 0.1);
 }
 
-.configBadgeUnknown {
+.cooling {
+  color: $warning-color;
+  border-color: rgba($warning-color, 0.34);
+  background: rgba($warning-color, 0.1);
+}
+
+.disabled,
+.unavailable {
+  color: $error-color;
+  border-color: rgba($error-color, 0.34);
+  background: rgba($error-color, 0.1);
+}
+
+.accountMeta,
+.accountMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   color: var(--text-secondary);
-  background: var(--bg-primary);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
-// ─── View More Link ─────────────────────────────────────
+.healthBar {
+  display: grid;
+  grid-template-columns: repeat(20, minmax(4px, 1fr));
+  gap: 3px;
+  height: 22px;
+}
 
-.viewMoreLink {
-  display: inline-flex;
+.healthBar span {
+  border-radius: 3px;
+  background: var(--border-color);
+}
+
+.blocksuccess {
+  background: $success-color !important;
+}
+
+.blockfailure {
+  background: $error-color !important;
+}
+
+.blockmixed {
+  background: $warning-color !important;
+}
+
+.blockidle {
+  background: color-mix(in srgb, var(--border-color) 82%, transparent) !important;
+}
+
+.accountConfig {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-sm;
+  margin: 0;
+
+  div {
+    min-width: 0;
+    padding: $spacing-sm;
+    border: 1px solid var(--border-color);
+    border-radius: $radius-md;
+    background: var(--bg-primary);
+  }
+
+  dt {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  dd {
+    margin: 4px 0 0;
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+}
+
+.accountActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  margin-top: auto;
+}
+
+.emptyState {
+  padding: $spacing-2xl;
+  border: 1px dashed var(--border-color);
+  border-radius: $radius-md;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  text-align: center;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: flex;
   align-items: center;
-  font-size: 13px;
-  color: var(--primary-color);
-  text-decoration: none;
-  margin-top: $spacing-xs;
-  transition: color $transition-fast;
+  justify-content: center;
+  padding: $spacing-lg;
+  background: rgb(0 0 0 / 0.46);
+}
+
+.modal {
+  width: min(760px, 100%);
+  max-height: min(86vh, 900px);
+  overflow: auto;
+  padding: $spacing-xl;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-lg;
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-xl);
+}
+
+.iconButton {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
 
   &:hover {
-    text-decoration: underline;
-    color: var(--primary-hover);
+    color: var(--text-primary);
+    border-color: var(--border-hover);
   }
 }
 
-// ─── Animations ─────────────────────────────────────────
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-md;
 
-@keyframes heroEnter {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  @media (max-width: 680px) {
+    grid-template-columns: 1fr;
   }
 }
 
-@keyframes fadeSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+.selectField,
+.textareaField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  > label,
+  > span {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 700;
   }
 }
 
-@keyframes cardEnter {
-  from {
-    opacity: 0;
-    transform: translateY(16px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+.toggleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-md;
+  margin: $spacing-lg 0;
+
+  @media (max-width: 680px) {
+    grid-template-columns: 1fr;
   }
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
+.textareaField {
+  margin-top: $spacing-md;
+
+  textarea {
+    min-height: 88px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: $radius-md;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    font: inherit;
+    resize: vertical;
+
+    &:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 18%, transparent);
+    }
   }
-  50% {
-    opacity: 0.5;
-  }
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  margin-top: $spacing-xl;
 }

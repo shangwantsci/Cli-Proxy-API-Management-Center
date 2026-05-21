@@ -39,10 +39,19 @@
 
 .splash-logo {
   height: 80px;
-  width: auto;
+  width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: $radius-lg;
+  border: 1px solid var(--border-color);
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, var(--bg-primary));
   box-shadow: $shadow-lg;
   animation: splash-logo-pulse 1.5s ease-in-out infinite;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0;
 }
 
 @keyframes splash-logo-pulse {
@@ -59,7 +68,7 @@
   font-weight: 800;
   color: var(--text-primary);
   margin: 0;
-  letter-spacing: -0.5px;
+  letter-spacing: 0;
 }
 
 .splash-subtitle {

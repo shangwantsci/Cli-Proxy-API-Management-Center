@@ -16,6 +16,10 @@ export type AuthFileFieldsPatch = {
   headers?: Record<string, string>;
   priority?: number;
   note?: string;
+  cloak_mode?: string;
+  cloak_strict_mode?: boolean;
+  cloak_sensitive_words?: string[];
+  cloak_cache_user_id?: boolean;
 };
 type AuthFileBatchFailure = { name: string; error: string };
 type AuthFileBatchUploadResponse = {

@@ -24,6 +24,8 @@ export interface OAuthCallbackResponse {
 export interface ClaudeCookieAuthRequest {
   sessionKey: string;
   proxyUrl?: string;
+  prefix?: string;
+  note?: string;
 }
 
 export interface ClaudeCookieAuthResponse {
@@ -74,6 +76,8 @@ export const oauthApi = {
   cookieAuthClaude: (payload: ClaudeCookieAuthRequest) =>
     apiClient.post<ClaudeCookieAuthResponse>('/anthropic-cookie-auth', {
       session_key: payload.sessionKey,
-      proxy_url: payload.proxyUrl || undefined
+      proxy_url: payload.proxyUrl || undefined,
+      prefix: payload.prefix || undefined,
+      note: payload.note || undefined
     })
 };
