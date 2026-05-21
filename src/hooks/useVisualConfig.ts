@@ -1037,9 +1037,13 @@ export function useVisualConfig() {
         proxyUrl: typeof parsed['proxy-url'] === 'string' ? parsed['proxy-url'] : '',
         forceModelPrefix: Boolean(parsed['force-model-prefix']),
         passthroughHeaders: Boolean(parsed['passthrough-headers']),
-        requestRetry: String(parsed['request-retry'] ?? ''),
-        maxRetryCredentials: String(parsed['max-retry-credentials'] ?? ''),
-        maxRetryInterval: String(parsed['max-retry-interval'] ?? ''),
+        requestRetry: String(parsed['request-retry'] ?? DEFAULT_VISUAL_VALUES.requestRetry),
+        maxRetryCredentials: String(
+          parsed['max-retry-credentials'] ?? DEFAULT_VISUAL_VALUES.maxRetryCredentials
+        ),
+        maxRetryInterval: String(
+          parsed['max-retry-interval'] ?? DEFAULT_VISUAL_VALUES.maxRetryInterval
+        ),
         disableCooling: Boolean(parsed['disable-cooling']),
         disableImageGeneration: parseDisableImageGenerationMode(parsed['disable-image-generation']),
         authAutoRefreshWorkers: String(parsed['auth-auto-refresh-workers'] ?? ''),
@@ -1067,9 +1071,10 @@ export function useVisualConfig() {
           typeof claudeHeaderDefaults?.arch === 'string' ? claudeHeaderDefaults.arch : '',
         claudeHeaderTimeout:
           typeof claudeHeaderDefaults?.timeout === 'string' ? claudeHeaderDefaults.timeout : '',
-        claudeHeaderStabilizeDeviceProfile: Boolean(
-          claudeHeaderDefaults?.['stabilize-device-profile']
-        ),
+        claudeHeaderStabilizeDeviceProfile:
+          typeof claudeHeaderDefaults?.['stabilize-device-profile'] === 'boolean'
+            ? claudeHeaderDefaults['stabilize-device-profile']
+            : true,
         codexHeaderUserAgent:
           typeof codexHeaderDefaults?.['user-agent'] === 'string'
             ? codexHeaderDefaults['user-agent']
@@ -1085,7 +1090,10 @@ export function useVisualConfig() {
 
         routingStrategy: routing?.strategy === 'fill-first' ? 'fill-first' : 'round-robin',
         routingSessionAffinity: Boolean(
-          routing?.['session-affinity'] ?? routing?.sessionAffinity ?? routing?.['sessionAffinity']
+          routing?.['session-affinity'] ??
+            routing?.sessionAffinity ??
+            routing?.['sessionAffinity'] ??
+            DEFAULT_VISUAL_VALUES.routingSessionAffinity
         ),
         routingSessionAffinityTTL:
           typeof routing?.['session-affinity-ttl'] === 'string'
@@ -1235,7 +1243,8 @@ export function useVisualConfig() {
           values.claudeHeaderOs.trim() ||
           values.claudeHeaderArch.trim() ||
           values.claudeHeaderTimeout.trim() ||
-          values.claudeHeaderStabilizeDeviceProfile
+          values.claudeHeaderStabilizeDeviceProfile !==
+            DEFAULT_VISUAL_VALUES.claudeHeaderStabilizeDeviceProfile
         ) {
           ensureMapInDoc(doc, ['claude-header-defaults']);
           setStringInDoc(
@@ -1256,11 +1265,21 @@ export function useVisualConfig() {
           setStringInDoc(doc, ['claude-header-defaults', 'os'], values.claudeHeaderOs);
           setStringInDoc(doc, ['claude-header-defaults', 'arch'], values.claudeHeaderArch);
           setStringInDoc(doc, ['claude-header-defaults', 'timeout'], values.claudeHeaderTimeout);
-          setBooleanInDoc(
-            doc,
-            ['claude-header-defaults', 'stabilize-device-profile'],
-            values.claudeHeaderStabilizeDeviceProfile
-          );
+          if (
+            values.claudeHeaderStabilizeDeviceProfile ===
+            DEFAULT_VISUAL_VALUES.claudeHeaderStabilizeDeviceProfile
+          ) {
+            setBooleanInDoc(
+              doc,
+              ['claude-header-defaults', 'stabilize-device-profile'],
+              values.claudeHeaderStabilizeDeviceProfile
+            );
+          } else {
+            doc.setIn(
+              ['claude-header-defaults', 'stabilize-device-profile'],
+              values.claudeHeaderStabilizeDeviceProfile
+            );
+          }
           deleteIfMapEmpty(doc, ['claude-header-defaults']);
         }
 
@@ -1308,7 +1327,7 @@ export function useVisualConfig() {
         if (
           docHas(doc, ['routing']) ||
           values.routingStrategy !== 'round-robin' ||
-          values.routingSessionAffinity ||
+          values.routingSessionAffinity !== DEFAULT_VISUAL_VALUES.routingSessionAffinity ||
           values.routingSessionAffinityTTL.trim()
         ) {
           ensureMapInDoc(doc, ['routing']);

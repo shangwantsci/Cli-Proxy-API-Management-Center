@@ -31,6 +31,12 @@ interface ProviderState {
   callbackSubmitting?: boolean;
   callbackStatus?: 'success' | 'error';
   callbackError?: string;
+  cookieSessionKey?: string;
+  cookieProxyUrl?: string;
+  cookieSubmitting?: boolean;
+  cookieStatus?: 'success' | 'error';
+  cookieError?: string;
+  cookieAuthFile?: string;
 }
 
 interface VertexImportResult {
@@ -229,6 +235,10 @@ export function OAuthPage() {
       if (provider === 'gemini-cli' && current.projectId !== undefined) {
         next.projectId = current.projectId;
       }
+      if (provider === 'anthropic') {
+        next.cookieSessionKey = current.cookieSessionKey;
+        next.cookieProxyUrl = current.cookieProxyUrl;
+      }
       return {
         ...prev,
         [provider]: next
@@ -386,6 +396,46 @@ export function OAuthPage() {
     }
   };
 
+  const submitClaudeCookieAuth = async () => {
+    const state = states.anthropic || {};
+    const sessionKey = (state.cookieSessionKey || '').trim();
+    const proxyUrl = (state.cookieProxyUrl || '').trim();
+    if (!sessionKey) {
+      showNotification(t('auth_login.anthropic_cookie_required'), 'warning');
+      return;
+    }
+    updateProviderState('anthropic', {
+      cookieSubmitting: true,
+      cookieStatus: undefined,
+      cookieError: undefined,
+      cookieAuthFile: undefined
+    });
+    try {
+      const res = await oauthApi.cookieAuthClaude({
+        sessionKey,
+        proxyUrl: proxyUrl || undefined
+      });
+      updateProviderState('anthropic', {
+        cookieSubmitting: false,
+        cookieStatus: 'success',
+        cookieError: undefined,
+        cookieAuthFile: res.auth_file || res.path
+      });
+      showNotification(t('auth_login.anthropic_cookie_status_success'), 'success');
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      updateProviderState('anthropic', {
+        cookieSubmitting: false,
+        cookieStatus: 'error',
+        cookieError: message
+      });
+      showNotification(
+        `${t('auth_login.anthropic_cookie_status_error')} ${message || ''}`,
+        'error'
+      );
+    }
+  };
+
   const handleVertexFilePick = () => {
     vertexFileInputRef.current?.click();
   };
@@ -500,6 +550,64 @@ export function OAuthPage() {
                         }
                         placeholder={t('auth_login.gemini_cli_project_id_placeholder')}
                       />
+                    </div>
+                  )}
+                  {provider.id === 'anthropic' && (
+                    <div className={styles.cookieSection}>
+                      <Input
+                        type="password"
+                        label={t('auth_login.anthropic_cookie_session_label')}
+                        hint={t('auth_login.anthropic_cookie_session_hint')}
+                        value={state.cookieSessionKey || ''}
+                        onChange={(e) =>
+                          updateProviderState(provider.id, {
+                            cookieSessionKey: e.target.value,
+                            cookieStatus: undefined,
+                            cookieError: undefined,
+                            cookieAuthFile: undefined
+                          })
+                        }
+                        placeholder={t('auth_login.anthropic_cookie_session_placeholder')}
+                      />
+                      <Input
+                        label={t('auth_login.anthropic_cookie_proxy_label')}
+                        hint={t('auth_login.anthropic_cookie_proxy_hint')}
+                        value={state.cookieProxyUrl || ''}
+                        onChange={(e) =>
+                          updateProviderState(provider.id, {
+                            cookieProxyUrl: e.target.value,
+                            cookieStatus: undefined,
+                            cookieError: undefined
+                          })
+                        }
+                        placeholder={t('auth_login.anthropic_cookie_proxy_placeholder')}
+                      />
+                      <div className={styles.cookieActions}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={submitClaudeCookieAuth}
+                          loading={state.cookieSubmitting}
+                        >
+                          {t('auth_login.anthropic_cookie_button')}
+                        </Button>
+                      </div>
+                      {state.cookieStatus === 'success' && (
+                        <div className={styles.cookieResult}>
+                          <div className="status-badge success">
+                            {t('auth_login.anthropic_cookie_status_success')}
+                            {state.cookieAuthFile ? ` ${state.cookieAuthFile}` : ''}
+                          </div>
+                          <Button variant="secondary" size="sm" onClick={() => navigate('/auth-files')}>
+                            {t('auth_login.view_auth_files')}
+                          </Button>
+                        </div>
+                      )}
+                      {state.cookieStatus === 'error' && (
+                        <div className="status-badge error">
+                          {t('auth_login.anthropic_cookie_status_error')} {state.cookieError || ''}
+                        </div>
+                      )}
                     </div>
                   )}
                   {state.url && (

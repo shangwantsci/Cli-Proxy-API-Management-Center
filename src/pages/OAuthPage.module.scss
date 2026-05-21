@@ -166,6 +166,24 @@
   }
 }
 
+.cookieSection {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
+}
+
+.cookieActions,
+.cookieResult {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
 .formItem {
   display: flex;
   flex-direction: column;

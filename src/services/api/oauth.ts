@@ -21,6 +21,18 @@ export interface OAuthCallbackResponse {
   status: 'ok';
 }
 
+export interface ClaudeCookieAuthRequest {
+  sessionKey: string;
+  proxyUrl?: string;
+}
+
+export interface ClaudeCookieAuthResponse {
+  status: 'ok';
+  auth_file?: string;
+  path?: string;
+  email?: string;
+}
+
 const WEBUI_SUPPORTED: OAuthProvider[] = [
   'codex',
   'anthropic',
@@ -57,5 +69,11 @@ export const oauthApi = {
       provider: callbackProvider,
       redirect_url: redirectUrl
     });
-  }
+  },
+
+  cookieAuthClaude: (payload: ClaudeCookieAuthRequest) =>
+    apiClient.post<ClaudeCookieAuthResponse>('/anthropic-cookie-auth', {
+      session_key: payload.sessionKey,
+      proxy_url: payload.proxyUrl || undefined
+    })
 };

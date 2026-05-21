@@ -832,7 +832,7 @@ export function VisualConfigEditor({
                     <Input
                       label={t('config_management.visual.sections.network.request_retry')}
                       type="number"
-                      placeholder="3"
+                      placeholder="2"
                       value={values.requestRetry}
                       onChange={(e) => onChange({ requestRetry: e.target.value })}
                       disabled={disabled}
