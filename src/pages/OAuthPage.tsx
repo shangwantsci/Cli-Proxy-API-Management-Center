@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { oauthApi } from '@/services/api/oauth';
+import { extractOAuthCallbackState, oauthApi } from '@/services/api/oauth';
 import { useNotificationStore } from '@/stores';
 import { copyToClipboard } from '@/utils/clipboard';
 import styles from './OAuthPage.module.scss';
@@ -123,8 +123,16 @@ export function OAuthPage() {
     }
     setCallbackSubmitting(true);
     try {
-      await oauthApi.submitCallback('anthropic', callbackUrl.trim());
-      markSuccess('Claude OAuth 回调已提交，账号已加入账号池');
+      const callbackInput = callbackUrl.trim();
+      const result = await oauthApi.submitCallback('anthropic', callbackInput);
+      const submittedState = result.state || extractOAuthCallbackState(callbackInput) || authState;
+      setStatus('waiting');
+      setStatusText('Claude OAuth 回调已提交，正在换取 token 并写入账号池');
+      showNotification('Claude OAuth 回调已提交，正在等待后端完成换授权', 'success');
+      if (submittedState) {
+        setAuthState(submittedState);
+        pollStatus(submittedState);
+      }
       setCallbackUrl('');
     } catch (error) {
       setStatus('error');

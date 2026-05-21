@@ -19,6 +19,8 @@ export interface OAuthStartResponse {
 
 export interface OAuthCallbackResponse {
   status: 'ok';
+  provider?: string;
+  state?: string;
 }
 
 export interface ClaudeCookieAuthRequest {
@@ -46,6 +48,42 @@ const CALLBACK_PROVIDER_MAP: Partial<Record<OAuthProvider, string>> = {
   'gemini-cli': 'gemini'
 };
 
+type ParsedOAuthCallbackInput = {
+  code?: string;
+  state?: string;
+  error?: string;
+};
+
+function parseOAuthCallbackInput(input: string): ParsedOAuthCallbackInput {
+  const trimmed = input.trim();
+  if (!trimmed) return {};
+
+  const candidates = [trimmed];
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    candidates.push(`https://callback.local/?${trimmed.replace(/^[?#]/, '')}`);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const url = new URL(candidate);
+      const params = url.searchParams;
+      const state = params.get('state')?.trim() || undefined;
+      const code = params.get('code')?.trim() || undefined;
+      const error = params.get('error')?.trim() || params.get('error_description')?.trim() || undefined;
+      if (state || code || error) {
+        return { code, state, error };
+      }
+    } catch {
+      // Try the normalized query-string candidate next.
+    }
+  }
+  return {};
+}
+
+export function extractOAuthCallbackState(input: string): string {
+  return parseOAuthCallbackInput(input).state || '';
+}
+
 export const oauthApi = {
   startAuth: (provider: OAuthProvider, options?: { projectId?: string }) => {
     const params: Record<string, string | boolean> = {};
@@ -67,9 +105,13 @@ export const oauthApi = {
 
   submitCallback: (provider: OAuthProvider, redirectUrl: string) => {
     const callbackProvider = CALLBACK_PROVIDER_MAP[provider] ?? provider;
+    const parsed = parseOAuthCallbackInput(redirectUrl);
     return apiClient.post<OAuthCallbackResponse>('/oauth-callback', {
       provider: callbackProvider,
-      redirect_url: redirectUrl
+      redirect_url: redirectUrl,
+      code: parsed.code,
+      state: parsed.state,
+      error: parsed.error
     });
   },
 
