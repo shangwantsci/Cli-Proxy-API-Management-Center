@@ -23,6 +23,31 @@ type DeleteAllOptions = {
   onResetDisabledOnly: () => void;
 };
 
+const authFileMergeKeys = (file: AuthFileItem): string[] => {
+  const keys = [
+    file.name,
+    typeof file.id === 'string' ? file.id : '',
+    String(file.authIndex ?? file['auth_index'] ?? '').trim(),
+  ].filter(Boolean);
+  return Array.from(new Set(keys));
+};
+
+const mergeClaudeHealth = (files: AuthFileItem[], healthAccounts: AuthFileItem[]): AuthFileItem[] => {
+  if (healthAccounts.length === 0) return files;
+
+  const healthByKey = new Map<string, AuthFileItem>();
+  healthAccounts.forEach((account) => {
+    authFileMergeKeys(account).forEach((key) => healthByKey.set(key, account));
+  });
+
+  return files.map((file) => {
+    const health = authFileMergeKeys(file)
+      .map((key) => healthByKey.get(key))
+      .find(Boolean);
+    return health ? { ...file, ...health, name: file.name || health.name } : file;
+  });
+};
+
 export type UseAuthFilesDataResult = {
   files: AuthFileItem[];
   selectedFiles: Set<string>;
@@ -164,7 +189,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     setError('');
     try {
       const data = await authFilesApi.list();
-      setFiles(data?.files || []);
+      let nextFiles = data?.files || [];
+      try {
+        const healthAccounts = await authFilesApi.listClaudeHealth();
+        nextFiles = mergeClaudeHealth(nextFiles, healthAccounts);
+      } catch {
+        // Older backends do not expose the focused Claude health endpoint.
+      }
+      setFiles(nextFiles);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : t('notification.refresh_failed');
       setError(errorMessage);

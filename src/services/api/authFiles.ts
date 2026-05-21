@@ -10,6 +10,7 @@ import { parseTimestampMs } from '@/utils/timestamp';
 type StatusError = { status?: number };
 type AuthFileStatusResponse = { status: string; disabled: boolean };
 type AuthFileEntry = AuthFilesResponse['files'][number];
+type ClaudeAuthHealthResponse = { accounts?: AuthFileEntry[] };
 export type AuthFileFieldsPatch = {
   prefix?: string;
   proxy_url?: string;
@@ -408,6 +409,12 @@ const OAUTH_MODEL_ALIAS_ENDPOINT = '/oauth-model-alias';
 
 export const authFilesApi = {
   list: async () => dedupeAuthFilesResponse(await apiClient.get<AuthFilesResponse>('/auth-files')),
+
+  listClaudeHealth: async () => {
+    const payload = await apiClient.get<ClaudeAuthHealthResponse>('/auth-files/claude-health');
+    return dedupeAuthFilesResponse({ files: Array.isArray(payload?.accounts) ? payload.accounts : [] })
+      .files;
+  },
 
   setStatus: (name: string, disabled: boolean) =>
     apiClient.patch<AuthFileStatusResponse>('/auth-files/status', { name, disabled }),

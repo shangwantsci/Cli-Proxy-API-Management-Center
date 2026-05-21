@@ -31,6 +31,10 @@ export interface AuthFileItem {
   unavailable?: boolean;
   status?: string;
   statusMessage?: string;
+  healthStatus?: string;
+  expiresAt?: string | number;
+  secondsUntilExpiration?: number;
+  proxyUrl?: string;
   lastRefresh?: string | number;
   modified?: number;
   success?: unknown;

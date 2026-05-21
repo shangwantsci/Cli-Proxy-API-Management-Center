@@ -38,6 +38,60 @@ import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQu
 import styles from '@/pages/AuthFilesPage.module.scss';
 
 const HEALTHY_STATUS_MESSAGES = new Set(['ok', 'healthy', 'ready', 'success', 'available']);
+const WARNING_AUTH_HEALTH = new Set(['expiring_soon', 'expired', 'unavailable', 'error']);
+
+const healthStatusLabel = (value: string): string => {
+  switch (value) {
+    case 'healthy':
+    case 'active':
+      return '健康';
+    case 'expiring_soon':
+      return '即将过期';
+    case 'expired':
+      return '认证过期';
+    case 'unavailable':
+      return '暂不可用';
+    case 'error':
+      return '异常';
+    case 'refreshing':
+      return '刷新中';
+    case 'pending':
+      return '待处理';
+    case 'disabled':
+      return '已停用';
+    default:
+      return value;
+  }
+};
+
+const readTextField = (file: AuthFileItem, ...keys: string[]): string => {
+  for (const key of keys) {
+    const value = file[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+};
+
+const formatExpiresAt = (value: unknown): string => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value < 1e12 ? value * 1000 : value).toLocaleString();
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value.trim());
+    return Number.isNaN(parsed) ? value.trim() : new Date(parsed).toLocaleString();
+  }
+  return '';
+};
+
+const formatClaudeDeviceProfile = (value: unknown): string => {
+  if (!value || typeof value !== 'object') return '';
+  const profile = value as Record<string, unknown>;
+  const userAgent = typeof profile.user_agent === 'string' ? profile.user_agent.trim() : '';
+  const packageVersion =
+    typeof profile.package_version === 'string' ? profile.package_version.trim() : '';
+  if (!userAgent) return '';
+  return packageVersion ? `${userAgent} / ${packageVersion}` : userAgent;
+};
 
 export type AuthFileCardProps = {
   file: AuthFileItem;
@@ -120,15 +174,24 @@ export function AuthFileCard(props: AuthFileCardProps) {
     (authIndexKey && statusBarCache.get(authIndexKey)) ||
     statusBarDataFromRecentRequests(recentBuckets);
   const rawStatusMessage = getAuthFileStatusMessage(file);
+  const rawHealthStatus = readTextField(file, 'health_status', 'healthStatus').toLowerCase();
+  const hasHealthWarning = WARNING_AUTH_HEALTH.has(rawHealthStatus);
   const hasStatusWarning =
-    Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase());
+    hasHealthWarning ||
+    (Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase()));
 
   const priorityValue = parsePriorityValue(file.priority ?? file['priority']);
   const noteValue = typeof file.note === 'string' ? file.note.trim() : '';
+  const proxyUrl = readTextField(file, 'proxy_url', 'proxyUrl');
+  const expiresAtLabel = formatExpiresAt(file['expires_at'] ?? file.expiresAt);
+  const deviceProfileLabel =
+    providerKey === 'claude' ? formatClaudeDeviceProfile(file['claude_device_profile']) : '';
   const stateLabel = isRuntimeOnly
     ? t('auth_files.type_virtual') || '虚拟认证文件'
     : file.disabled
       ? t('auth_files.health_status_disabled')
+      : rawHealthStatus
+        ? healthStatusLabel(rawHealthStatus)
       : hasStatusWarning
         ? t('auth_files.health_status_warning')
         : rawStatusMessage
@@ -218,6 +281,28 @@ export function AuthFileCard(props: AuthFileCardProps) {
                 <span className={styles.metaLabel}>{t('auth_files.priority_display')}</span>
                 <span className={`${styles.metaValue} ${styles.priorityValue}`}>
                   {priorityValue}
+                </span>
+              </div>
+            )}
+            {proxyUrl && (
+              <div className={styles.metaItem}>
+                <span className={styles.metaLabel}>代理</span>
+                <span className={styles.metaValue} title={proxyUrl}>
+                  {proxyUrl}
+                </span>
+              </div>
+            )}
+            {expiresAtLabel && (
+              <div className={styles.metaItem}>
+                <span className={styles.metaLabel}>过期时间</span>
+                <span className={styles.metaValue}>{expiresAtLabel}</span>
+              </div>
+            )}
+            {deviceProfileLabel && (
+              <div className={styles.metaItem}>
+                <span className={styles.metaLabel}>Claude Code 指纹</span>
+                <span className={styles.metaValue} title={deviceProfileLabel}>
+                  {deviceProfileLabel}
                 </span>
               </div>
             )}
