@@ -149,7 +149,7 @@
     "debug_enable": "Enable Debug Mode",
     "proxy_title": "Proxy Settings",
     "proxy_url_label": "Proxy URL:",
-    "proxy_url_placeholder": "e.g.: socks5://user:pass@127.0.0.1:1080/",
+    "proxy_url_placeholder": "e.g.: socks5://user:pass@127.0.0.1:1080 or direct",
     "proxy_update": "Update",
     "proxy_clear": "Clear",
     "retry_title": "Request Retry",
@@ -237,6 +237,7 @@
     "prefix_label": "Prefix (Optional):",
     "prefix_placeholder": "e.g.: team-a",
     "prefix_hint": "When set, call models as prefix/<model> to target this entry.",
+    "proxy_url_supported_hint": "Supports http://, https://, socks5://, and socks5h://. Leave blank to use the global proxy; direct/none forces this account to bypass proxy.",
     "priority_label": "Priority (Optional):",
     "priority_hint": "Higher values are preferred. Leave empty for default (0).",
     "config_toggle_label": "Enabled",
@@ -288,7 +289,7 @@
     "claude_add_modal_url_label": "Base URL (Optional):",
     "claude_add_modal_url_placeholder": "e.g.: https://api.anthropic.com",
     "claude_add_modal_proxy_label": "Proxy URL (Optional):",
-    "claude_add_modal_proxy_placeholder": "e.g.: socks5://proxy.example.com:1080",
+    "claude_add_modal_proxy_placeholder": "e.g.: socks5://user:pass@proxy.example.com:1080 or direct",
     "claude_edit_modal_title": "Edit Claude API Configuration",
     "claude_edit_modal_key_label": "API Key:",
     "claude_edit_modal_url_label": "Base URL (Optional):",
@@ -595,7 +596,8 @@
     "prefix_label": "Prefix (prefix)",
     "proxy_url_label": "Proxy URL (proxy_url)",
     "prefix_placeholder": "",
-    "proxy_url_placeholder": "socks5://username:password@proxy_ip:port/",
+    "proxy_url_placeholder": "socks5://username:password@proxy_ip:port or direct",
+    "proxy_url_hint": "Supports http://, https://, socks5://, and socks5h://. Leave blank to use the global proxy; direct/none forces this account to bypass proxy.",
     "priority_label": "Priority (priority)",
     "priority_placeholder": "e.g. 10 or -1",
     "priority_hint": "Integers only. Invalid values are ignored. Larger value means higher priority.",
@@ -872,8 +874,8 @@
     "anthropic_cookie_session_placeholder": "sk-ant-sid01-...",
     "anthropic_cookie_session_hint": "Exchange the sessionKey from your claude.ai browser cookie for OAuth credentials.",
     "anthropic_cookie_proxy_label": "Account proxy URL (optional)",
-    "anthropic_cookie_proxy_placeholder": "e.g. socks5://proxy.example.com:1080",
-    "anthropic_cookie_proxy_hint": "Used only for the imported Claude account. Leave blank to use the global proxy.",
+    "anthropic_cookie_proxy_placeholder": "e.g. socks5://user:pass@proxy.example.com:1080 or direct",
+    "anthropic_cookie_proxy_hint": "Used only for the imported Claude account. Supports http://, https://, socks5://, and socks5h://. Leave blank to use the global proxy; direct/none bypasses proxy for this account.",
     "anthropic_cookie_button": "Exchange Cookie",
     "anthropic_cookie_required": "Please enter a Claude sessionKey first.",
     "anthropic_cookie_status_success": "Cookie authorization succeeded. Auth file saved.",
@@ -1034,6 +1036,7 @@
   },
   "config_management": {
     "title": "Config Panel",
+    "claude_strategy_title": "Claude Proxy Strategy",
     "editor_title": "Configuration File",
     "reload": "Reload",
     "reload_confirm_message": "Reloading will discard your unsaved changes. Do you want to continue?",
@@ -1076,8 +1079,8 @@
       "no_changes": "No changes detected"
     },
     "tabs": {
-      "visual": "Visual Editor",
-      "source": "Source File Editor"
+      "visual": "Strategy Panel",
+      "source": "YAML Source"
     },
     "visual": {
       "notice": "Visual mode covers common fields. Review or edit unsupported config.yaml entries in source mode.",

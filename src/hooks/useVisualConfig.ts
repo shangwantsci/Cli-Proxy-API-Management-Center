@@ -164,24 +164,10 @@ function getNonNegativeIntegerError(value: string): 'non_negative_integer' | und
   return Number(trimmed) >= 0 ? undefined : 'non_negative_integer';
 }
 
-function getPortError(value: string): 'port_range' | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  if (!/^\d+$/.test(trimmed)) return 'port_range';
-  const parsed = Number(trimmed);
-  return parsed >= 1 && parsed <= 65535 ? undefined : 'port_range';
-}
-
 export function getVisualConfigValidationErrors(
   values: VisualConfigValues
 ): VisualConfigValidationErrors {
   return {
-    port: getPortError(values.port),
-    errorLogsMaxFiles: getNonNegativeIntegerError(values.errorLogsMaxFiles),
-    logsMaxTotalSizeMb: getNonNegativeIntegerError(values.logsMaxTotalSizeMb),
-    redisUsageQueueRetentionSeconds: getNonNegativeIntegerError(
-      values.redisUsageQueueRetentionSeconds
-    ),
     requestRetry: getNonNegativeIntegerError(values.requestRetry),
     maxRetryCredentials: getNonNegativeIntegerError(values.maxRetryCredentials),
     maxRetryInterval: getNonNegativeIntegerError(values.maxRetryInterval),
@@ -661,6 +647,156 @@ function serializeRawPayloadRulesForYaml(rules: PayloadRule[]): Array<Record<str
     .filter((rule) => rule.models.length > 0);
 }
 
+function shouldApplyClaudeStrategyOnlyVisualChanges(): boolean {
+  return true;
+}
+
+function setManagedIntFromStringInDoc(
+  doc: YamlDocument,
+  path: YamlPath,
+  value: unknown,
+  dirtyFields: Set<string>,
+  dirtyKey: string
+): void {
+  if (!shouldWriteManagedField(doc, path, dirtyFields, dirtyKey)) return;
+  setIntFromStringInDoc(doc, path, value);
+}
+
+function setManagedDisableImageGenerationInDoc(
+  doc: YamlDocument,
+  path: YamlPath,
+  value: DisableImageGenerationMode,
+  dirtyFields: Set<string>
+): void {
+  if (!shouldWriteManagedField(doc, path, dirtyFields, 'disableImageGeneration')) return;
+  setDisableImageGenerationInDoc(doc, path, value);
+}
+
+function applyClaudeStrategyVisualChangesToDoc(
+  doc: YamlDocument,
+  values: VisualConfigValues,
+  dirtyFields: Set<string>
+): void {
+  setStringInDoc(doc, ['proxy-url'], values.proxyUrl);
+  setBooleanInDoc(doc, ['force-model-prefix'], values.forceModelPrefix);
+  setBooleanInDoc(doc, ['passthrough-headers'], values.passthroughHeaders);
+  setManagedIntFromStringInDoc(doc, ['request-retry'], values.requestRetry, dirtyFields, 'requestRetry');
+  setManagedIntFromStringInDoc(
+    doc,
+    ['max-retry-credentials'],
+    values.maxRetryCredentials,
+    dirtyFields,
+    'maxRetryCredentials'
+  );
+  setManagedIntFromStringInDoc(
+    doc,
+    ['max-retry-interval'],
+    values.maxRetryInterval,
+    dirtyFields,
+    'maxRetryInterval'
+  );
+  setBooleanInDoc(doc, ['disable-cooling'], values.disableCooling);
+  setManagedDisableImageGenerationInDoc(
+    doc,
+    ['disable-image-generation'],
+    values.disableImageGeneration,
+    dirtyFields
+  );
+  setManagedIntFromStringInDoc(
+    doc,
+    ['auth-auto-refresh-workers'],
+    values.authAutoRefreshWorkers,
+    dirtyFields,
+    'authAutoRefreshWorkers'
+  );
+
+  if (
+    docHas(doc, ['claude-header-defaults']) ||
+    values.claudeHeaderUserAgent.trim() ||
+    values.claudeHeaderPackageVersion.trim() ||
+    values.claudeHeaderRuntimeVersion.trim() ||
+    values.claudeHeaderOs.trim() ||
+    values.claudeHeaderArch.trim() ||
+    values.claudeHeaderTimeout.trim() ||
+    dirtyFields.has('claudeHeaderStabilizeDeviceProfile')
+  ) {
+    ensureMapInDoc(doc, ['claude-header-defaults']);
+    setStringInDoc(doc, ['claude-header-defaults', 'user-agent'], values.claudeHeaderUserAgent);
+    setStringInDoc(
+      doc,
+      ['claude-header-defaults', 'package-version'],
+      values.claudeHeaderPackageVersion
+    );
+    setStringInDoc(
+      doc,
+      ['claude-header-defaults', 'runtime-version'],
+      values.claudeHeaderRuntimeVersion
+    );
+    setStringInDoc(doc, ['claude-header-defaults', 'os'], values.claudeHeaderOs);
+    setStringInDoc(doc, ['claude-header-defaults', 'arch'], values.claudeHeaderArch);
+    setStringInDoc(doc, ['claude-header-defaults', 'timeout'], values.claudeHeaderTimeout);
+    setBooleanInDoc(
+      doc,
+      ['claude-header-defaults', 'stabilize-device-profile'],
+      values.claudeHeaderStabilizeDeviceProfile
+    );
+    deleteIfMapEmpty(doc, ['claude-header-defaults']);
+  }
+
+  if (
+    docHas(doc, ['routing']) ||
+    values.routingStrategy !== 'round-robin' ||
+    values.routingSessionAffinity !== DEFAULT_VISUAL_VALUES.routingSessionAffinity ||
+    values.routingSessionAffinityTTL.trim()
+  ) {
+    ensureMapInDoc(doc, ['routing']);
+    doc.setIn(['routing', 'strategy'], values.routingStrategy);
+    setBooleanInDoc(doc, ['routing', 'session-affinity'], values.routingSessionAffinity);
+    setStringInDoc(doc, ['routing', 'session-affinity-ttl'], values.routingSessionAffinityTTL);
+    deleteIfMapEmpty(doc, ['routing']);
+  }
+
+  const keepaliveSeconds =
+    typeof values.streaming?.keepaliveSeconds === 'string'
+      ? values.streaming.keepaliveSeconds
+      : '';
+  const bootstrapRetries =
+    typeof values.streaming?.bootstrapRetries === 'string'
+      ? values.streaming.bootstrapRetries
+      : '';
+  const nonstreamKeepaliveInterval =
+    typeof values.streaming?.nonstreamKeepaliveInterval === 'string'
+      ? values.streaming.nonstreamKeepaliveInterval
+      : '';
+
+  if (docHas(doc, ['streaming']) || keepaliveSeconds.trim() || bootstrapRetries.trim()) {
+    ensureMapInDoc(doc, ['streaming']);
+    setManagedIntFromStringInDoc(
+      doc,
+      ['streaming', 'keepalive-seconds'],
+      keepaliveSeconds,
+      dirtyFields,
+      'streaming.keepaliveSeconds'
+    );
+    setManagedIntFromStringInDoc(
+      doc,
+      ['streaming', 'bootstrap-retries'],
+      bootstrapRetries,
+      dirtyFields,
+      'streaming.bootstrapRetries'
+    );
+    deleteIfMapEmpty(doc, ['streaming']);
+  }
+
+  setManagedIntFromStringInDoc(
+    doc,
+    ['nonstream-keepalive-interval'],
+    nonstreamKeepaliveInterval,
+    dirtyFields,
+    'streaming.nonstreamKeepaliveInterval'
+  );
+}
+
 type VisualConfigState = {
   visualValues: VisualConfigValues;
   baselineValues: VisualConfigValues;
@@ -1135,6 +1271,11 @@ export function useVisualConfig() {
           doc.contents = doc.createNode({}) as unknown as typeof doc.contents;
         }
         const values = visualValues;
+
+        if (shouldApplyClaudeStrategyOnlyVisualChanges()) {
+          applyClaudeStrategyVisualChangesToDoc(doc, values, dirtyFields);
+          return doc.toString({ indent: 2, lineWidth: 120, minContentWidth: 0 });
+        }
 
         setStringInDoc(doc, ['host'], values.host);
         setIntFromStringInDoc(doc, ['port'], values.port);

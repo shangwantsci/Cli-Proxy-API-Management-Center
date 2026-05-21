@@ -86,8 +86,7 @@ export function ConfigPage() {
   const shouldRenderFloatingActions = isCurrentLayer;
   const hasVisualModeError = !!visualParseError;
   const hasVisualValidationErrors =
-    activeTab === 'visual' &&
-    (Object.values(visualValidationErrors).some(Boolean) || visualHasPayloadValidationErrors);
+    activeTab === 'visual' && Object.values(visualValidationErrors).some(Boolean);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -504,7 +503,9 @@ export function ConfigPage() {
     <div className={styles.container}>
       <div className={styles.pageHeader}>
         <div className={styles.pageHeaderCopy}>
-          <h1 className={styles.pageTitle}>{t('config_management.title')}</h1>
+          <h1 className={styles.pageTitle}>
+            {t('config_management.claude_strategy_title', { defaultValue: 'Claude 反代策略' })}
+          </h1>
           <div className={styles.tabBar}>
             <button
               type="button"
@@ -512,7 +513,7 @@ export function ConfigPage() {
               onClick={() => handleTabChange('visual')}
               disabled={saving || loading}
             >
-              {t('config_management.tabs.visual', { defaultValue: '可视化编辑' })}
+              {t('config_management.tabs.visual', { defaultValue: '策略面板' })}
             </button>
             <button
               type="button"
@@ -520,7 +521,7 @@ export function ConfigPage() {
               onClick={() => handleTabChange('source')}
               disabled={saving || loading}
             >
-              {t('config_management.tabs.source', { defaultValue: '源代码编辑' })}
+              {t('config_management.tabs.source', { defaultValue: 'YAML 源码' })}
             </button>
           </div>
         </div>

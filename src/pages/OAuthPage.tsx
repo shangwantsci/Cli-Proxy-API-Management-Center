@@ -258,7 +258,8 @@ export function OAuthPage() {
                 label="该账号专属代理"
                 value={proxyUrl}
                 onChange={(event) => setProxyUrl(event.target.value)}
-                placeholder="http://user:pass@host:port，可留空"
+                placeholder="socks5://user:pass@host:port 或 direct，可留空"
+                hint="支持 http://、https://、socks5://、socks5h://；留空使用全局代理，direct/none 强制该账号直连。"
               />
               <div className={styles.cookieActions}>
                 <Button onClick={submitCookie} loading={cookieSubmitting}>

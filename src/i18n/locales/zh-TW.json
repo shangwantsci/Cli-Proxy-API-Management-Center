@@ -149,7 +149,7 @@
     "debug_enable": "啟用除錯模式",
     "proxy_title": "代理設定",
     "proxy_url_label": "代理 URL:",
-    "proxy_url_placeholder": "例如: socks5://user:pass@127.0.0.1:1080/",
+    "proxy_url_placeholder": "例如: socks5://user:pass@127.0.0.1:1080 或 direct",
     "proxy_update": "更新",
     "proxy_clear": "清空",
     "retry_title": "請求重試",
@@ -237,6 +237,7 @@
     "prefix_label": "前綴（選填）:",
     "prefix_placeholder": "例如: team-a",
     "prefix_hint": "設定後可用 prefix/<model> 選擇該條目。",
+    "proxy_url_supported_hint": "支援 http://、https://、socks5://、socks5h://；留空使用全域代理，direct/none 強制該帳號直連。",
     "priority_label": "優先順序（選填）:",
     "priority_hint": "數值越大優先順序越高；留空表示預設（0）。",
     "config_toggle_label": "啟用",
@@ -288,7 +289,7 @@
     "claude_add_modal_url_label": "Base URL（選填）:",
     "claude_add_modal_url_placeholder": "例如: https://api.anthropic.com",
     "claude_add_modal_proxy_label": "代理 URL（選填）:",
-    "claude_add_modal_proxy_placeholder": "例如: socks5://proxy.example.com:1080",
+    "claude_add_modal_proxy_placeholder": "例如: socks5://user:pass@proxy.example.com:1080 或 direct",
     "claude_edit_modal_title": "編輯 Claude API 設定",
     "claude_edit_modal_key_label": "API 金鑰:",
     "claude_edit_modal_url_label": "Base URL（選填）:",
@@ -595,7 +596,8 @@
     "prefix_label": "前綴（prefix）",
     "proxy_url_label": "代理 URL（proxy_url）",
     "prefix_placeholder": "",
-    "proxy_url_placeholder": "socks5://username:password@proxy_ip:port/",
+    "proxy_url_placeholder": "socks5://username:password@proxy_ip:port 或 direct",
+    "proxy_url_hint": "支援 http://、https://、socks5://、socks5h://；留空使用全域代理，direct/none 強制該帳號直連。",
     "priority_label": "優先順序（priority）",
     "priority_placeholder": "例如: 10 或 -1",
     "priority_hint": "僅支援整數；無效值會被忽略。數值越大優先順序越高。",
@@ -872,8 +874,8 @@
     "anthropic_cookie_session_placeholder": "sk-ant-sid01-...",
     "anthropic_cookie_session_hint": "使用 claude.ai 瀏覽器 Cookie 中的 sessionKey 直接換取 OAuth 憑證。",
     "anthropic_cookie_proxy_label": "帳號代理 URL（選填）",
-    "anthropic_cookie_proxy_placeholder": "例如: socks5://proxy.example.com:1080",
-    "anthropic_cookie_proxy_hint": "僅用於本次匯入的 Claude 帳號；留空則使用全域代理。",
+    "anthropic_cookie_proxy_placeholder": "例如: socks5://user:pass@proxy.example.com:1080 或 direct",
+    "anthropic_cookie_proxy_hint": "僅用於本次匯入的 Claude 帳號；支援 http://、https://、socks5://、socks5h://；留空使用全域代理，direct/none 強制該帳號直連。",
     "anthropic_cookie_button": "Cookie 換授權",
     "anthropic_cookie_required": "請先填寫 Claude sessionKey。",
     "anthropic_cookie_status_success": "Cookie 授權成功，驗證檔案已儲存。",
@@ -1060,6 +1062,7 @@
   },
   "config_management": {
     "title": "設定面板",
+    "claude_strategy_title": "Claude 反代策略",
     "editor_title": "設定檔",
     "reload": "重新載入",
     "reload_confirm_message": "重新載入將捨棄你目前未儲存的修改，確定繼續嗎？",
@@ -1102,8 +1105,8 @@
       "no_changes": "未偵測到變更"
     },
     "tabs": {
-      "visual": "視覺化編輯",
-      "source": "原始檔編輯"
+      "visual": "策略面板",
+      "source": "YAML 原始碼"
     },
     "visual": {
       "notice": "視覺化模式涵蓋常用欄位，未涵蓋的設定仍需在原始檔模式中查看或編輯。",

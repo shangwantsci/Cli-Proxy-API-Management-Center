@@ -341,8 +341,10 @@ export function AiProvidersClaudeEditPage() {
             />
             <Input
               label={t('ai_providers.claude_add_modal_proxy_label')}
+              placeholder={t('ai_providers.claude_add_modal_proxy_placeholder')}
               value={form.proxyUrl ?? ''}
               onChange={(e) => setForm((prev) => ({ ...prev, proxyUrl: e.target.value }))}
+              hint={t('ai_providers.proxy_url_supported_hint')}
               disabled={saving || disableControls || isTesting}
             />
             <HeaderInputList

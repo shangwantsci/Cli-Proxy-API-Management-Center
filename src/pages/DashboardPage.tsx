@@ -505,7 +505,8 @@ export function DashboardPage() {
             label="该账号专属代理"
             value={importProxyUrl}
             onChange={(event) => setImportProxyUrl(event.target.value)}
-            placeholder="http://user:pass@host:port，可留空"
+            placeholder="socks5://user:pass@host:port 或 direct，可留空"
+            hint="支持 http://、https://、socks5://、socks5h://；留空使用全局代理，direct/none 强制该账号直连。"
           />
           <Button onClick={handleCookieImport} loading={importing} fullWidth>
             Cookie 换授权并加入账号池
@@ -647,7 +648,8 @@ export function DashboardPage() {
                 label="专属代理"
                 value={editForm.proxyUrl}
                 onChange={(event) => setEditForm({ ...editForm, proxyUrl: event.target.value })}
-                placeholder="http://user:pass@host:port"
+                placeholder="socks5://user:pass@host:port 或 direct"
+                hint="支持 http://、https://、socks5://、socks5h://；留空使用全局代理，direct/none 强制该账号直连。"
               />
               <Input
                 label="路径前缀"

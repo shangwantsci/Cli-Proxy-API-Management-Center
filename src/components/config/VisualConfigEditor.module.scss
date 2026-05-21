@@ -74,6 +74,163 @@
   }
 }
 
+.strategyHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.95fr);
+  gap: 18px;
+  align-items: stretch;
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--text-primary) 5%, transparent), transparent 54%),
+    var(--bg-primary);
+
+  @include mobile {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+}
+
+.strategyHeroCopy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.strategyHeroTitle {
+  margin: 0;
+  max-width: 760px;
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 780;
+  line-height: 1.22;
+
+  @include mobile {
+    font-size: 21px;
+  }
+}
+
+.strategyHeroText {
+  margin: 0;
+  max-width: 780px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.strategyMetrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+
+  @include mobile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.strategyMetric {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+}
+
+.strategyMetric_good {
+  border-color: color-mix(in srgb, var(--success-text) 34%, var(--border-color));
+  background: color-mix(in srgb, var(--success-bg) 52%, transparent);
+}
+
+.strategyMetric_warn {
+  border-color: color-mix(in srgb, var(--warning-text) 34%, var(--border-color));
+  background: color-mix(in srgb, var(--warning-bg) 52%, transparent);
+}
+
+.strategyMetric_neutral {
+  border-color: var(--border-color);
+}
+
+.strategyMetricLabel {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+}
+
+.strategyMetricValue {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.statusList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  background: transparent;
+}
+
+.statusChipActive {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--text-primary) 32%, var(--border-color));
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.strategyFlow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+
+  > div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-secondary) 62%, transparent);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 730;
+    line-height: 1.35;
+    text-align: center;
+  }
+
+  @include tablet {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @include mobile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .expandableInputWrapper {
   position: relative;
   display: flex;
