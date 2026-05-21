@@ -66,12 +66,18 @@ function parseOAuthCallbackInput(input: string): ParsedOAuthCallbackInput {
   for (const candidate of candidates) {
     try {
       const url = new URL(candidate);
-      const params = url.searchParams;
-      const state = params.get('state')?.trim() || undefined;
-      const code = params.get('code')?.trim() || undefined;
-      const error = params.get('error')?.trim() || params.get('error_description')?.trim() || undefined;
-      if (state || code || error) {
-        return { code, state, error };
+      const paramSources = [url.searchParams];
+      const fragment = url.hash.replace(/^#?[?&]?/, '').trim();
+      if (fragment) {
+        paramSources.push(new URLSearchParams(fragment));
+      }
+      for (const params of paramSources) {
+        const state = params.get('state')?.trim() || undefined;
+        const code = params.get('code')?.trim() || undefined;
+        const error = params.get('error')?.trim() || params.get('error_description')?.trim() || undefined;
+        if (state || code || error) {
+          return { code, state, error };
+        }
       }
     } catch {
       // Try the normalized query-string candidate next.

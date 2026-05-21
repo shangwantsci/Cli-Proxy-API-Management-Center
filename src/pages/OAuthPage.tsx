@@ -102,7 +102,7 @@ export function OAuthPage() {
       const result = await oauthApi.startAuth('anthropic');
       setAuthUrl(result.url);
       setAuthState(result.state || '');
-      setStatusText('请在新窗口完成 Claude 授权，授权完成后本页会自动更新状态');
+      setStatusText('请在新窗口完成 Claude 授权，然后把浏览器地址栏里的回调 URL 粘贴到下方');
       if (result.state) {
         pollStatus(result.state);
       }
