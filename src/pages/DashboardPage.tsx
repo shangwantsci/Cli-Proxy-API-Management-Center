@@ -692,6 +692,15 @@ function quotaRuntimeText(record: Record<string, unknown>): string {
   return '未触发限额';
 }
 
+function quotaDetailCoolingWindow(detail?: AccountQuotaDetail): AccountQuotaWindow | null {
+  if (!detail || detail.status !== 'success') return null;
+  return (
+    detail.windows.find(
+      (window) => window.remainingPercent !== null && window.remainingPercent <= 0
+    ) ?? null
+  );
+}
+
 function lastErrorText(record: Record<string, unknown>): string {
   const permanentError = claudePermanentAccountError(record);
   if (permanentError) {
@@ -819,7 +828,12 @@ export function DashboardPage() {
   }, [loadAccessSettings]);
 
   const stats = useMemo(() => {
-    const states = accounts.map(getAccountState);
+    const states = accounts.map((account) => {
+      const name = String(account.name ?? '').trim();
+      return quotaDetailCoolingWindow(name ? quotaByAccount[name] : undefined)
+        ? 'quotaCooling'
+        : getAccountState(account);
+    });
     const success = accounts.reduce((sum, account) => sum + normalizeUsageTotal(account.success), 0);
     const failed = accounts.reduce((sum, account) => sum + normalizeUsageTotal(account.failed), 0);
     const total = success + failed;
@@ -838,7 +852,7 @@ export function DashboardPage() {
       proxyCount,
       successRate: total > 0 ? Math.round((success / total) * 100) : 100,
     };
-  }, [accounts]);
+  }, [accounts, quotaByAccount]);
 
   const strategySummary = useMemo(() => {
     const raw = config?.raw ?? {};
@@ -1232,7 +1246,9 @@ export function DashboardPage() {
             {accounts.map((account) => {
               const record = account as Record<string, unknown>;
               const name = String(account.name ?? '').trim();
-              const state = getAccountState(account);
+              const quotaDetail = name ? quotaByAccount[name] : undefined;
+              const quotaCoolingWindow = quotaDetailCoolingWindow(quotaDetail);
+              const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
               const recent = normalizeRecentRequestBuckets(
                 account.recent_requests ?? account.recentRequests
               );
@@ -1242,8 +1258,13 @@ export function DashboardPage() {
               const priority = readNumber(record, ['priority'], 0);
               const cloakMode = readString(record, ['cloak_mode', 'cloakMode']) || 'always';
               const cacheUserId = readBool(record, ['cloak_cache_user_id', 'cloakCacheUserId'], true);
-              const quotaDetail = name ? quotaByAccount[name] : undefined;
               const permanentError = claudePermanentAccountError(record);
+              const stateDetail = quotaCoolingWindow
+                ? `${quotaCoolingWindow.label} 额度已用完，恢复 ${quotaCoolingWindow.resetLabel}`
+                : accountStateDetail(account);
+              const runtimeQuotaText = quotaCoolingWindow
+                ? `${quotaCoolingWindow.label} 额度已用完，恢复 ${quotaCoolingWindow.resetLabel}`
+                : quotaRuntimeText(record);
               const healthLabel = permanentError
                 ? '上游已禁用'
                 : state === 'active'
@@ -1262,7 +1283,7 @@ export function DashboardPage() {
                     </span>
                   </div>
                   <div className={styles.accountMeta}>
-                    <span>{accountStateDetail(account)}</span>
+                    <span>{stateDetail}</span>
                     <span>刷新 {formatDate(record.last_refresh ?? record.lastRefresh)}</span>
                   </div>
                   <div className={styles.healthBar} aria-label="最近请求状态">
@@ -1305,7 +1326,7 @@ export function DashboardPage() {
                     </div>
                     <div>
                       <dt>运行限额</dt>
-                      <dd>{quotaRuntimeText(record)}</dd>
+                      <dd>{runtimeQuotaText}</dd>
                     </div>
                     <div>
                       <dt>最近错误</dt>
