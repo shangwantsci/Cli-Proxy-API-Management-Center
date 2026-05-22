@@ -205,9 +205,60 @@ function getAccountTitle(account: AuthFileItem): string {
   );
 }
 
+function claudePermanentAccountError(record: Record<string, unknown>): { code: string; message: string } | null {
+  const lastError = readRecord(record.last_error ?? record.lastError);
+  const parts: string[] = [
+    readString(record, ['status_message', 'statusMessage']),
+    readString(lastError ?? {}, ['code']),
+    readString(lastError ?? {}, ['message']),
+  ].filter(Boolean);
+
+  const rawMessage = readString(lastError ?? {}, ['message']);
+  if (rawMessage.trim().startsWith('{')) {
+    try {
+      const payload = readRecord(JSON.parse(rawMessage));
+      const error = readRecord(payload?.error);
+      const details = readRecord(error?.details);
+      parts.push(
+        readString(error ?? {}, ['type']),
+        readString(error ?? {}, ['message']),
+        readString(details ?? {}, ['error_code', 'errorCode'])
+      );
+    } catch {
+      /* keep raw message */
+    }
+  }
+
+  const combined = parts.join(' ').toLowerCase();
+  const upstreamMessage =
+    parts.find((part) => part && !part.trim().startsWith('{') && !part.includes('_')) ||
+    rawMessage ||
+    '上游账号不可用';
+
+  if (combined.includes('account_banned')) {
+    return { code: 'account_banned', message: upstreamMessage };
+  }
+  if (
+    combined.includes('organization_disabled') ||
+    combined.includes('organization has been disabled') ||
+    combined.includes('this organization has been disabled')
+  ) {
+    return { code: 'organization_disabled', message: upstreamMessage };
+  }
+  if (
+    combined.includes('account_disabled') ||
+    combined.includes('account has been disabled') ||
+    combined.includes('user account is disabled')
+  ) {
+    return { code: 'account_disabled', message: upstreamMessage };
+  }
+  return null;
+}
+
 function getAccountState(account: AuthFileItem): AccountState {
   const record = account as Record<string, unknown>;
   if (account.disabled) return 'disabled';
+  if (claudePermanentAccountError(record)) return 'disabled';
   const nextRetryAt = parseDateMs(record.next_retry_after ?? record.nextRetryAfter);
   if (nextRetryAt > Date.now()) return 'cooling';
   const status = String(account.status ?? '').trim().toLowerCase();
@@ -236,6 +287,10 @@ function accountStateLabel(state: AccountState): string {
 
 function accountStateDetail(account: AuthFileItem): string {
   const record = account as Record<string, unknown>;
+  const permanentError = claudePermanentAccountError(record);
+  if (permanentError) {
+    return `上游已禁用：${permanentError.message}`;
+  }
   const retryAt = record.next_retry_after ?? record.nextRetryAfter;
   if (parseDateMs(retryAt) > Date.now()) {
     return `下次重试 ${formatDate(retryAt)}`;
@@ -510,6 +565,10 @@ function quotaRuntimeText(record: Record<string, unknown>): string {
 }
 
 function lastErrorText(record: Record<string, unknown>): string {
+  const permanentError = claudePermanentAccountError(record);
+  if (permanentError) {
+    return `${permanentError.code} / ${permanentError.message}`;
+  }
   const error = readRecord(record.last_error ?? record.lastError);
   if (!error) return '无';
   const status = readString(error, ['http_status', 'httpStatus']);
@@ -803,6 +862,11 @@ export function DashboardPage() {
   const handleRefreshAccountQuota = async (account: AuthFileItem) => {
     const name = String(account.name ?? '').trim();
     if (!name) return;
+    const permanentError = claudePermanentAccountError(account as Record<string, unknown>);
+    if (permanentError) {
+      showNotification(`该账号已被上游禁用，不能继续刷新额度：${permanentError.message}`, 'error');
+      return;
+    }
     setQuotaByAccount((prev) => ({
       ...prev,
       [name]: { status: 'loading', windows: [] },
@@ -1038,6 +1102,7 @@ export function DashboardPage() {
               const cloakMode = readString(record, ['cloak_mode', 'cloakMode']) || 'auto';
               const cacheUserId = readBool(record, ['cloak_cache_user_id', 'cloakCacheUserId'], true);
               const quotaDetail = name ? quotaByAccount[name] : undefined;
+              const permanentError = claudePermanentAccountError(record);
 
               return (
                 <article key={name || getAccountTitle(account)} className={styles.accountCard}>
@@ -1086,7 +1151,7 @@ export function DashboardPage() {
                     </div>
                     <div>
                       <dt>健康</dt>
-                      <dd>{healthStatusLabel(record.health_status ?? record.healthStatus)}</dd>
+                      <dd>{permanentError ? '上游已禁用' : healthStatusLabel(record.health_status ?? record.healthStatus)}</dd>
                     </div>
                     <div>
                       <dt>有效期</dt>
@@ -1106,7 +1171,9 @@ export function DashboardPage() {
                       <div>
                         <strong>订阅与额度</strong>
                         <span>
-                          {quotaDetail?.status === 'success'
+                          {permanentError
+                            ? '账号已被上游禁用，额度信息仅供历史参考'
+                            : quotaDetail?.status === 'success'
                             ? `${quotaDetail.planLabel || '未知套餐'}${quotaDetail.subscriptionStatus ? ` / ${quotaDetail.subscriptionStatus}` : ''}`
                             : '按需查询 Claude 上游用量'}
                         </span>
@@ -1115,14 +1182,19 @@ export function DashboardPage() {
                         variant="secondary"
                         size="sm"
                         loading={quotaDetail?.status === 'loading'}
+                        disabled={Boolean(permanentError)}
                         onClick={() => handleRefreshAccountQuota(account)}
                       >
                         刷新额度
                       </Button>
                     </div>
-                    {quotaDetail?.status === 'error' ? (
-                      <div className={styles.quotaError}>{quotaDetail.error || '额度查询失败'}</div>
-                    ) : quotaDetail?.status === 'success' ? (
+                    {permanentError ? (
+                      <div className={styles.quotaError}>
+                        {permanentError.message}。该账号已从生产轮询中隔离，已有额度信息只表示 OAuth
+                        资料接口曾经可读。
+                      </div>
+                    ) : null}
+                    {quotaDetail?.status === 'success' ? (
                       <div className={styles.quotaContent}>
                         <div className={styles.quotaSummary}>
                           <span>{quotaDetail.accountEmail || getAccountTitle(account)}</span>
@@ -1154,7 +1226,9 @@ export function DashboardPage() {
                           <div className={styles.quotaEmpty}>上游没有返回可展示的额度窗口</div>
                         )}
                       </div>
-                    ) : (
+                    ) : quotaDetail?.status === 'error' && !permanentError ? (
+                      <div className={styles.quotaError}>{quotaDetail.error || '额度查询失败'}</div>
+                    ) : permanentError ? null : (
                       <div className={styles.quotaEmpty}>点击刷新额度后显示订阅、剩余额度和重置时间。</div>
                     )}
                   </div>
