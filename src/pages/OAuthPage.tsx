@@ -99,7 +99,9 @@ export function OAuthPage() {
     setStatus('waiting');
     setStatusText('正在创建 Claude OAuth 授权链接');
     try {
-      const result = await oauthApi.startAuth('anthropic');
+      const result = await oauthApi.startAuth('anthropic', {
+        proxyUrl: proxyUrl.trim() || undefined,
+      });
       setAuthUrl(result.url);
       setAuthState(result.state || '');
       setStatusText('请在新窗口完成 Claude 授权，然后把浏览器地址栏里的回调 URL 粘贴到下方');
@@ -193,8 +195,15 @@ export function OAuthPage() {
           <div className={styles.cardContent}>
             <p className={styles.cardHint}>
               推荐优先使用 OAuth。授权成功后，后端会保存刷新令牌，后续 access token
-              过期时可以自动刷新。
+              过期时可以自动刷新。服务器默认出口不可用时，请先配置该账号专属代理。
             </p>
+            <Input
+              label="该账号专属代理"
+              value={proxyUrl}
+              onChange={(event) => setProxyUrl(event.target.value)}
+              placeholder="socks5://user:pass@host:port 或 direct，可留空"
+              hint="OAuth 换 token、后续额度查询和账号请求都会优先使用这个代理。支持 http://、https://、socks5://、socks5h://。"
+            />
             <div className={styles.authUrlActions}>
               <Button onClick={startOAuth} loading={starting}>
                 开始 Claude OAuth
@@ -267,7 +276,7 @@ export function OAuthPage() {
                 value={proxyUrl}
                 onChange={(event) => setProxyUrl(event.target.value)}
                 placeholder="socks5://user:pass@host:port 或 direct，可留空"
-                hint="支持 http://、https://、socks5://、socks5h://；留空使用全局代理，direct/none 强制该账号直连。"
+                hint="与上方 OAuth 代理共用；支持 http://、https://、socks5://、socks5h://；留空使用全局代理，direct/none 强制该账号直连。"
               />
               <div className={styles.cookieActions}>
                 <Button onClick={submitCookie} loading={cookieSubmitting}>

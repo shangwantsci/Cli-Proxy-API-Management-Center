@@ -15,6 +15,7 @@ export type OAuthProvider =
 export interface OAuthStartResponse {
   url: string;
   state?: string;
+  proxy_url?: string;
 }
 
 export interface OAuthCallbackResponse {
@@ -91,13 +92,16 @@ export function extractOAuthCallbackState(input: string): string {
 }
 
 export const oauthApi = {
-  startAuth: (provider: OAuthProvider, options?: { projectId?: string }) => {
+  startAuth: (provider: OAuthProvider, options?: { projectId?: string; proxyUrl?: string }) => {
     const params: Record<string, string | boolean> = {};
     if (WEBUI_SUPPORTED.includes(provider)) {
       params.is_webui = true;
     }
     if (provider === 'gemini-cli' && options?.projectId) {
       params.project_id = options.projectId;
+    }
+    if (provider === 'anthropic' && options?.proxyUrl) {
+      params.proxy_url = options.proxyUrl;
     }
     return apiClient.get<OAuthStartResponse>(`/${provider}-auth-url`, {
       params: Object.keys(params).length ? params : undefined

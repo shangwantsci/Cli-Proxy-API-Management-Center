@@ -14,9 +14,21 @@ import {
   IconShield,
 } from '@/components/ui/icons';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
+import { apiCallApi, getApiCallErrorMessage } from '@/services/api';
 import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api/authFiles';
 import { oauthApi } from '@/services/api/oauth';
 import type { AuthFileItem } from '@/types/authFile';
+import type { ClaudeExtraUsage, ClaudeProfileResponse } from '@/types';
+import { normalizeAuthIndex } from '@/utils/authIndex';
+import {
+  CLAUDE_PROFILE_URL,
+  CLAUDE_REQUEST_HEADERS,
+  CLAUDE_USAGE_URL,
+  CLAUDE_USAGE_WINDOW_KEYS,
+  formatQuotaResetTime,
+  normalizeNumberValue,
+  parseClaudeUsagePayload,
+} from '@/utils/quota';
 import {
   normalizeRecentRequestBuckets,
   normalizeUsageTotal,
@@ -35,6 +47,27 @@ interface AccountEditForm {
   cloakStrictMode: boolean;
   cloakCacheUserId: boolean;
   cloakSensitiveWords: string;
+}
+
+type AccountQuotaStatus = 'idle' | 'loading' | 'success' | 'error';
+
+interface AccountQuotaWindow {
+  id: string;
+  label: string;
+  remainingPercent: number | null;
+  usedPercent: number | null;
+  resetLabel: string;
+}
+
+interface AccountQuotaDetail {
+  status: AccountQuotaStatus;
+  windows: AccountQuotaWindow[];
+  planLabel?: string;
+  subscriptionStatus?: string;
+  organizationName?: string;
+  accountEmail?: string;
+  extraUsage?: ClaudeExtraUsage | null;
+  error?: string;
 }
 
 const CLOAK_MODE_OPTIONS = [
@@ -200,11 +233,181 @@ function splitSensitiveWords(value: string): string[] {
     });
 }
 
+function normalizeFlagValue(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
+  }
+  return undefined;
+}
+
+function parseClaudeProfilePayload(payload: unknown): ClaudeProfileResponse | null {
+  if (payload == null) return null;
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed) as ClaudeProfileResponse;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof payload === 'object') return payload as ClaudeProfileResponse;
+  return null;
+}
+
+function resolveClaudePlanLabel(profile: ClaudeProfileResponse | null): string {
+  if (!profile) return '未知套餐';
+  if (normalizeFlagValue(profile.account?.has_claude_max)) return 'Claude Max';
+  if (normalizeFlagValue(profile.account?.has_claude_pro)) return 'Claude Pro';
+  const organizationType = String(profile.organization?.organization_type ?? '').toLowerCase();
+  const subscriptionStatus = String(profile.organization?.subscription_status ?? '').toLowerCase();
+  if (organizationType === 'claude_team' && subscriptionStatus === 'active') return 'Claude Team';
+  if (
+    normalizeFlagValue(profile.account?.has_claude_max) === false &&
+    normalizeFlagValue(profile.account?.has_claude_pro) === false
+  ) {
+    return 'Free';
+  }
+  return '未知套餐';
+}
+
+function claudeWindowLabel(labelKey: string, fallback: string): string {
+  const labels: Record<string, string> = {
+    'claude_quota.five_hour': '5 小时窗口',
+    'claude_quota.seven_day': '7 天总额度',
+    'claude_quota.seven_day_oauth_apps': '7 天 OAuth Apps',
+    'claude_quota.seven_day_opus': '7 天 Opus',
+    'claude_quota.seven_day_sonnet': '7 天 Sonnet',
+    'claude_quota.seven_day_cowork': '7 天协作',
+    'claude_quota.iguana_necktie': '扩展窗口',
+  };
+  return labels[labelKey] ?? fallback;
+}
+
+async function fetchClaudeAccountQuota(account: AuthFileItem): Promise<AccountQuotaDetail> {
+  const record = account as Record<string, unknown>;
+  const authIndex = normalizeAuthIndex(record['auth_index'] ?? account.authIndex);
+  if (!authIndex) {
+    throw new Error('该账号缺少 auth_index，无法查询额度');
+  }
+
+  const [usageResult, profileResult] = await Promise.allSettled([
+    apiCallApi.request({
+      authIndex,
+      method: 'GET',
+      url: CLAUDE_USAGE_URL,
+      header: { ...CLAUDE_REQUEST_HEADERS },
+    }),
+    apiCallApi.request({
+      authIndex,
+      method: 'GET',
+      url: CLAUDE_PROFILE_URL,
+      header: { ...CLAUDE_REQUEST_HEADERS },
+    }),
+  ]);
+
+  if (usageResult.status === 'rejected') {
+    throw usageResult.reason instanceof Error ? usageResult.reason : new Error('额度查询失败');
+  }
+  if (usageResult.value.statusCode < 200 || usageResult.value.statusCode >= 300) {
+    throw new Error(getApiCallErrorMessage(usageResult.value));
+  }
+
+  const payload = parseClaudeUsagePayload(usageResult.value.body ?? usageResult.value.bodyText);
+  if (!payload) {
+    throw new Error('Claude 额度响应为空或格式异常');
+  }
+
+  const windows = CLAUDE_USAGE_WINDOW_KEYS.flatMap(({ key, id, labelKey }) => {
+    const window = payload[key as keyof typeof payload];
+    if (!window || typeof window !== 'object' || !('utilization' in window)) return [];
+    const typedWindow = window as { utilization: unknown; resets_at?: string };
+    const usedPercent = normalizeNumberValue(typedWindow.utilization);
+    const remainingPercent = usedPercent === null ? null : Math.max(0, Math.min(100, 100 - usedPercent));
+    return [{
+      id,
+      label: claudeWindowLabel(labelKey, id),
+      usedPercent,
+      remainingPercent,
+      resetLabel: formatQuotaResetTime(typedWindow.resets_at),
+    }];
+  });
+
+  const profile =
+    profileResult.status === 'fulfilled' &&
+    profileResult.value.statusCode >= 200 &&
+    profileResult.value.statusCode < 300
+      ? parseClaudeProfilePayload(profileResult.value.body ?? profileResult.value.bodyText)
+      : null;
+
+  return {
+    status: 'success',
+    windows,
+    planLabel: resolveClaudePlanLabel(profile),
+    subscriptionStatus: profile?.organization?.subscription_status,
+    organizationName: profile?.organization?.name,
+    accountEmail: profile?.account?.email,
+    extraUsage: payload.extra_usage ?? null,
+  };
+}
+
 function configText(value: unknown, fallback: string): string {
   if (typeof value === 'string' && value.trim()) return value.trim();
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   if (typeof value === 'boolean') return value ? '开启' : '关闭';
   return fallback;
+}
+
+function healthStatusLabel(value: unknown): string {
+  const status = String(value ?? '').trim().toLowerCase();
+  switch (status) {
+    case 'healthy':
+      return '健康';
+    case 'expiring_soon':
+      return '即将过期';
+    case 'expired':
+      return '认证过期';
+    case 'unavailable':
+      return '不可用';
+    case 'disabled':
+      return '已停用';
+    case 'error':
+      return '异常';
+    case 'refreshing':
+      return '刷新中';
+    case 'pending':
+      return '等待中';
+    default:
+      return status || '未知';
+  }
+}
+
+function quotaRuntimeText(record: Record<string, unknown>): string {
+  if (readBool(record, ['quota_exceeded', 'quotaExceeded'], false)) {
+    return readString(record, ['quota_reason', 'quotaReason']) || '额度/频率受限';
+  }
+  const quota = readRecord(record.quota);
+  if (quota && readBool(quota, ['exceeded'], false)) {
+    return readString(quota, ['reason']) || '额度/频率受限';
+  }
+  return '未触发限额';
+}
+
+function lastErrorText(record: Record<string, unknown>): string {
+  const error = readRecord(record.last_error ?? record.lastError);
+  if (!error) return '无';
+  const status = readString(error, ['http_status', 'httpStatus']);
+  const code = readString(error, ['code']);
+  const message = readString(error, ['message']);
+  return [status, code, message].filter(Boolean).join(' / ') || '有错误记录';
+}
+
+function formatQuotaPercent(value: number | null): string {
+  return value === null ? '--' : `${Math.round(value)}%`;
 }
 
 function StatCard({
@@ -248,6 +451,7 @@ export function DashboardPage() {
   const [editForm, setEditForm] = useState<AccountEditForm | null>(null);
   const [savingAccount, setSavingAccount] = useState(false);
   const [togglingName, setTogglingName] = useState('');
+  const [quotaByAccount, setQuotaByAccount] = useState<Record<string, AccountQuotaDetail>>({});
 
   const loadAccounts = useCallback(async () => {
     if (connectionStatus !== 'connected') {
@@ -258,7 +462,10 @@ export function DashboardPage() {
     setLoading(true);
     try {
       const [authFiles] = await Promise.all([
-        authFilesApi.list(),
+        authFilesApi
+          .listClaudeHealth()
+          .then((files) => ({ files }))
+          .catch(() => authFilesApi.list()),
         fetchConfig(undefined, true).catch(() => null),
       ]);
       setAccounts(
@@ -390,6 +597,30 @@ export function DashboardPage() {
       showNotification(message, 'error');
     } finally {
       setTogglingName('');
+    }
+  };
+
+  const handleRefreshAccountQuota = async (account: AuthFileItem) => {
+    const name = String(account.name ?? '').trim();
+    if (!name) return;
+    setQuotaByAccount((prev) => ({
+      ...prev,
+      [name]: { status: 'loading', windows: [] },
+    }));
+    try {
+      const detail = await fetchClaudeAccountQuota(account);
+      setQuotaByAccount((prev) => ({
+        ...prev,
+        [name]: detail,
+      }));
+      showNotification('订阅与额度信息已刷新', 'success');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '订阅与额度查询失败';
+      setQuotaByAccount((prev) => ({
+        ...prev,
+        [name]: { status: 'error', windows: [], error: message },
+      }));
+      showNotification(message, 'error');
     }
   };
 
@@ -562,6 +793,7 @@ export function DashboardPage() {
               const priority = readNumber(record, ['priority'], 0);
               const cloakMode = readString(record, ['cloak_mode', 'cloakMode']) || 'auto';
               const cacheUserId = readBool(record, ['cloak_cache_user_id', 'cloakCacheUserId'], true);
+              const quotaDetail = name ? quotaByAccount[name] : undefined;
 
               return (
                 <article key={name || getAccountTitle(account)} className={styles.accountCard}>
@@ -608,7 +840,80 @@ export function DashboardPage() {
                         {cacheUserId ? ' / 稳定 user_id' : ' / 每次生成 user_id'}
                       </dd>
                     </div>
+                    <div>
+                      <dt>健康</dt>
+                      <dd>{healthStatusLabel(record.health_status ?? record.healthStatus)}</dd>
+                    </div>
+                    <div>
+                      <dt>有效期</dt>
+                      <dd>{formatDate(record.expires_at ?? record.expiresAt)}</dd>
+                    </div>
+                    <div>
+                      <dt>运行限额</dt>
+                      <dd>{quotaRuntimeText(record)}</dd>
+                    </div>
+                    <div>
+                      <dt>最近错误</dt>
+                      <dd>{lastErrorText(record)}</dd>
+                    </div>
                   </dl>
+                  <div className={styles.quotaPanel}>
+                    <div className={styles.quotaPanelHeader}>
+                      <div>
+                        <strong>订阅与额度</strong>
+                        <span>
+                          {quotaDetail?.status === 'success'
+                            ? `${quotaDetail.planLabel || '未知套餐'}${quotaDetail.subscriptionStatus ? ` / ${quotaDetail.subscriptionStatus}` : ''}`
+                            : '按需查询 Claude 上游用量'}
+                        </span>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={quotaDetail?.status === 'loading'}
+                        onClick={() => handleRefreshAccountQuota(account)}
+                      >
+                        刷新额度
+                      </Button>
+                    </div>
+                    {quotaDetail?.status === 'error' ? (
+                      <div className={styles.quotaError}>{quotaDetail.error || '额度查询失败'}</div>
+                    ) : quotaDetail?.status === 'success' ? (
+                      <div className={styles.quotaContent}>
+                        <div className={styles.quotaSummary}>
+                          <span>{quotaDetail.accountEmail || getAccountTitle(account)}</span>
+                          <span>{quotaDetail.organizationName || '个人/默认组织'}</span>
+                        </div>
+                        {quotaDetail.extraUsage?.is_enabled && (
+                          <div className={styles.quotaSummary}>
+                            <span>额外用量</span>
+                            <span>
+                              ${(quotaDetail.extraUsage.used_credits / 100).toFixed(2)} / $
+                              {(quotaDetail.extraUsage.monthly_limit / 100).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+                        {quotaDetail.windows.length > 0 ? (
+                          quotaDetail.windows.map((window) => (
+                            <div key={window.id} className={styles.quotaWindow}>
+                              <div className={styles.quotaWindowHeader}>
+                                <span>{window.label}</span>
+                                <strong>{formatQuotaPercent(window.remainingPercent)} 剩余</strong>
+                              </div>
+                              <div className={styles.quotaTrack}>
+                                <span style={{ width: `${Math.max(0, Math.min(100, window.remainingPercent ?? 0))}%` }} />
+                              </div>
+                              <small>重置 {window.resetLabel}</small>
+                            </div>
+                          ))
+                        ) : (
+                          <div className={styles.quotaEmpty}>上游没有返回可展示的额度窗口</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className={styles.quotaEmpty}>点击刷新额度后显示订阅、剩余额度和重置时间。</div>
+                    )}
+                  </div>
                   <div className={styles.accountActions}>
                     <Button variant="secondary" size="sm" onClick={() => openEditor(account)}>
                       <IconSettings size={15} />

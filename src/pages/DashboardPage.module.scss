@@ -396,6 +396,120 @@
   }
 }
 
+.quotaPanel {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+}
+
+.quotaPanelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-sm;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+}
+
+.quotaContent {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.quotaSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+
+  span {
+    min-width: 0;
+    word-break: break-word;
+  }
+}
+
+.quotaWindow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: $spacing-sm;
+  border-top: 1px solid var(--border-color);
+
+  small {
+    color: var(--text-tertiary);
+    font-size: 11px;
+  }
+}
+
+.quotaWindowHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  color: var(--text-secondary);
+  font-size: 12px;
+
+  strong {
+    color: var(--text-primary);
+    font-weight: 800;
+    white-space: nowrap;
+  }
+}
+
+.quotaTrack {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+
+  span {
+    display: block;
+    height: 100%;
+    min-width: 2px;
+    border-radius: inherit;
+    background: $success-color;
+  }
+}
+
+.quotaEmpty,
+.quotaError {
+  padding: $spacing-sm;
+  border-radius: $radius-md;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.quotaError {
+  color: $error-color;
+  background: rgba($error-color, 0.1);
+}
+
 .accountActions {
   display: flex;
   justify-content: flex-end;
