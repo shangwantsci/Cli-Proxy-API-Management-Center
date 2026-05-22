@@ -330,7 +330,7 @@
     "claude_cloak_hint": "Маскировка делает запросы похожими на запросы официального CLI Claude Code для клиентов, которые не являются Claude Code.",
     "claude_cloak_mode_label": "Режим:",
     "claude_cloak_mode_hint": "auto: маскировать только если клиент не Claude Code; always: всегда; never: никогда.",
-    "claude_cloak_mode_auto": "Auto (только не-Claude Code)",
+    "claude_cloak_mode_auto": "Auto: keep real Claude Code unchanged",
     "claude_cloak_mode_always": "Всегда",
     "claude_cloak_mode_never": "Никогда",
     "claude_cloak_strict_label": "Строгий режим:",

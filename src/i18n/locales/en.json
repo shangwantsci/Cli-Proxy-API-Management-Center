@@ -330,7 +330,7 @@
     "claude_cloak_hint": "By default, all clients are normalized into the Claude Code CLI request shape so third-party client fingerprints do not pass through.",
     "claude_cloak_mode_label": "Mode:",
     "claude_cloak_mode_hint": "always: always rebuild the Claude Code fingerprint; auto: cloak only when the client does not look like real Claude Code; never: never cloak.",
-    "claude_cloak_mode_auto": "Non-Claude Code only",
+    "claude_cloak_mode_auto": "Auto cloak: keep real Claude Code unchanged",
     "claude_cloak_mode_always": "Always (recommended)",
     "claude_cloak_mode_never": "Never",
     "claude_cloak_strict_label": "Strict mode:",

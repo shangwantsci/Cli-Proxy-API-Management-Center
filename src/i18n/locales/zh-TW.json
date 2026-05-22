@@ -330,7 +330,7 @@
     "claude_cloak_hint": "預設對所有客戶端強制整理為 Claude Code CLI 請求形態，避免第三方客戶端痕跡透傳。",
     "claude_cloak_mode_label": "模式:",
     "claude_cloak_mode_hint": "always: 總是重建 Claude Code 指紋；auto: 僅當客戶端不像真實 Claude Code 時偽裝；never: 從不偽裝。",
-    "claude_cloak_mode_auto": "僅非 Claude Code",
+    "claude_cloak_mode_auto": "自動偽裝：真實 Claude Code 不重寫",
     "claude_cloak_mode_always": "總是（推薦）",
     "claude_cloak_mode_never": "從不",
     "claude_cloak_strict_label": "嚴格模式:",

@@ -80,7 +80,7 @@ interface AccountQuotaDetail {
 
 const CLOAK_MODE_OPTIONS = [
   { value: 'always', label: '始终伪装为 Claude Code' },
-  { value: 'auto', label: '仅真实 Claude Code 放行' },
+  { value: 'auto', label: '自动伪装：真实 Claude Code 不重写' },
   { value: 'never', label: '关闭伪装' },
 ];
 
