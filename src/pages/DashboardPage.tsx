@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { parseDocument } from 'yaml';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -12,9 +13,16 @@ import {
   IconRefreshCw,
   IconSettings,
   IconShield,
+  IconTrash2,
 } from '@/components/ui/icons';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
-import { apiCallApi, getApiCallErrorMessage } from '@/services/api';
+import {
+  apiCallApi,
+  apiKeysApi,
+  configFileApi,
+  getApiCallErrorMessage,
+  type ApiCallResult,
+} from '@/services/api';
 import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api/authFiles';
 import { oauthApi } from '@/services/api/oauth';
 import type { AuthFileItem } from '@/types/authFile';
@@ -75,6 +83,52 @@ const CLOAK_MODE_OPTIONS = [
   { value: 'always', label: '始终伪装为 Claude Code' },
   { value: 'never', label: '关闭伪装' },
 ];
+
+function splitApiKeyDraft(value: string): string[] {
+  const seen = new Set<string>();
+  return value
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter((item) => {
+      if (!item) return false;
+      if (seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
+function makeClientApiKey(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return `sk-claude-relay-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function isYamlMapLike(value: unknown): value is { set: (key: string, value: unknown) => void } {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      typeof (value as { set?: unknown }).set === 'function'
+  );
+}
+
+function updateRemoteManagementSecret(yamlContent: string, secretKey: string): string {
+  const document = parseDocument(yamlContent);
+  if (document.errors.length > 0) {
+    throw new Error(`配置 YAML 格式异常：${document.errors[0]?.message ?? '无法解析'}`);
+  }
+
+  let remoteManagement = document.get('remote-management', true);
+  if (!isYamlMapLike(remoteManagement)) {
+    document.set('remote-management', {});
+    remoteManagement = document.get('remote-management', true);
+  }
+  if (!isYamlMapLike(remoteManagement)) {
+    throw new Error('无法更新 remote-management 配置块');
+  }
+
+  remoteManagement.set('secret-key', secretKey);
+  return document.toString({ indent: 2, lineWidth: 120, minContentWidth: 0 });
+}
 
 function readRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -259,6 +313,58 @@ function parseClaudeProfilePayload(payload: unknown): ClaudeProfileResponse | nu
   return null;
 }
 
+function claudeApiErrorRecord(result: ApiCallResult): Record<string, unknown> | null {
+  const body = result.body;
+  if (typeof body === 'string') {
+    try {
+      return readRecord(JSON.parse(body));
+    } catch {
+      return null;
+    }
+  }
+  return readRecord(body);
+}
+
+function claudeApiErrorInfo(result: ApiCallResult): { code: string; message: string } {
+  const root = claudeApiErrorRecord(result);
+  const error = readRecord(root?.error);
+  const details = readRecord(error?.details);
+  const code =
+    readString(details ?? {}, ['error_code', 'errorCode']) ||
+    readString(error ?? {}, ['type', 'code']) ||
+    (result.statusCode === 401
+      ? 'unauthorized'
+      : result.statusCode === 403
+        ? 'forbidden'
+        : result.statusCode === 429
+          ? 'rate_limited'
+          : 'upstream_error');
+  const message = readString(error ?? {}, ['message']) || getApiCallErrorMessage(result);
+  return { code, message };
+}
+
+function formatClaudeAccountFailure(result: ApiCallResult, source: string): string {
+  const { code, message } = claudeApiErrorInfo(result);
+  const status = result.statusCode;
+  if (code === 'account_banned' || message.toLowerCase().includes('account_banned')) {
+    return `Claude 账号已被上游标记为封禁/停用（account_banned，来自 ${source}）`;
+  }
+  if (status === 401) {
+    return `Claude 认证已失效或被撤销（401，来自 ${source}）：${message}`;
+  }
+  if (status === 403) {
+    return `Claude 账号无权访问该接口（403，来自 ${source}）：${message}`;
+  }
+  if (status === 429) {
+    return `Claude 额度接口被限流（429，来自 ${source}）：${message}`;
+  }
+  return getApiCallErrorMessage(result);
+}
+
+function isClaudeAccountBlockingStatus(statusCode: number): boolean {
+  return statusCode === 401 || statusCode === 403 || statusCode === 429;
+}
+
 function resolveClaudePlanLabel(profile: ClaudeProfileResponse | null): string {
   if (!profile) return '未知套餐';
   if (normalizeFlagValue(profile.account?.has_claude_max)) return 'Claude Max';
@@ -313,8 +419,14 @@ async function fetchClaudeAccountQuota(account: AuthFileItem): Promise<AccountQu
   if (usageResult.status === 'rejected') {
     throw usageResult.reason instanceof Error ? usageResult.reason : new Error('额度查询失败');
   }
+  if (
+    profileResult.status === 'fulfilled' &&
+    isClaudeAccountBlockingStatus(profileResult.value.statusCode)
+  ) {
+    throw new Error(formatClaudeAccountFailure(profileResult.value, 'profile'));
+  }
   if (usageResult.value.statusCode < 200 || usageResult.value.statusCode >= 300) {
-    throw new Error(getApiCallErrorMessage(usageResult.value));
+    throw new Error(formatClaudeAccountFailure(usageResult.value, 'usage'));
   }
 
   const payload = parseClaudeUsagePayload(usageResult.value.body ?? usageResult.value.bodyText);
@@ -447,11 +559,29 @@ export function DashboardPage() {
   const [importing, setImporting] = useState(false);
   const [sessionKey, setSessionKey] = useState('');
   const [importProxyUrl, setImportProxyUrl] = useState('');
+  const [apiKeyDraft, setApiKeyDraft] = useState('');
+  const [adminPasswordDraft, setAdminPasswordDraft] = useState('');
+  const [savingAccessSettings, setSavingAccessSettings] = useState(false);
   const [editingAccount, setEditingAccount] = useState<AuthFileItem | null>(null);
   const [editForm, setEditForm] = useState<AccountEditForm | null>(null);
   const [savingAccount, setSavingAccount] = useState(false);
   const [togglingName, setTogglingName] = useState('');
+  const [deletingName, setDeletingName] = useState('');
   const [quotaByAccount, setQuotaByAccount] = useState<Record<string, AccountQuotaDetail>>({});
+
+  const loadAccessSettings = useCallback(async () => {
+    if (connectionStatus !== 'connected') {
+      setApiKeyDraft('');
+      return;
+    }
+    try {
+      const keys = await apiKeysApi.list();
+      setApiKeyDraft(keys.join('\n'));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '客户端 API Key 加载失败';
+      showNotification(message, 'error');
+    }
+  }, [connectionStatus, showNotification]);
 
   const loadAccounts = useCallback(async () => {
     if (connectionStatus !== 'connected') {
@@ -485,6 +615,10 @@ export function DashboardPage() {
   useEffect(() => {
     loadAccounts();
   }, [loadAccounts]);
+
+  useEffect(() => {
+    loadAccessSettings();
+  }, [loadAccessSettings]);
 
   const stats = useMemo(() => {
     const states = accounts.map(getAccountState);
@@ -574,6 +708,48 @@ export function DashboardPage() {
     }
   };
 
+  const handleGenerateApiKey = () => {
+    const nextKey = makeClientApiKey();
+    setApiKeyDraft((current) => {
+      const trimmed = current.trim();
+      return trimmed ? `${trimmed}\n${nextKey}` : nextKey;
+    });
+    showNotification('已生成新的客户端 API Key，保存后生效', 'success');
+  };
+
+  const handleSaveAccessSettings = async () => {
+    const nextApiKeys = splitApiKeyDraft(apiKeyDraft);
+    const nextAdminPassword = adminPasswordDraft.trim();
+
+    if (nextApiKeys.length === 0) {
+      showNotification('至少保留一个客户端 API Key，否则客户端无法调用 /v1 接口', 'error');
+      return;
+    }
+
+    setSavingAccessSettings(true);
+    try {
+      await apiKeysApi.replace(nextApiKeys);
+      setApiKeyDraft(nextApiKeys.join('\n'));
+
+      if (nextAdminPassword) {
+        const currentYaml = await configFileApi.fetchConfigYaml();
+        await configFileApi.saveConfigYaml(
+          updateRemoteManagementSecret(currentYaml, nextAdminPassword)
+        );
+        setAdminPasswordDraft('');
+        showNotification('连接凭证已保存。管理员密码已变更，请用新密码重新登录管理面板。', 'success');
+        return;
+      }
+
+      showNotification('客户端 API Key 已保存', 'success');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '连接凭证保存失败';
+      showNotification(message, 'error');
+    } finally {
+      setSavingAccessSettings(false);
+    }
+  };
+
   const openEditor = (account: AuthFileItem) => {
     setEditingAccount(account);
     setEditForm(makeEditForm(account));
@@ -600,6 +776,30 @@ export function DashboardPage() {
     }
   };
 
+  const handleDeleteAccount = async (account: AuthFileItem) => {
+    const name = String(account.name ?? '').trim();
+    if (!name) return;
+    if (!window.confirm(`确定要删除 Claude 账号 ${getAccountTitle(account)} 吗？此操作会移除该账号授权文件。`)) {
+      return;
+    }
+    setDeletingName(name);
+    try {
+      await authFilesApi.deleteFile(name);
+      setQuotaByAccount((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      showNotification('Claude 账号已删除', 'success');
+      await loadAccounts();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '账号删除失败';
+      showNotification(message, 'error');
+    } finally {
+      setDeletingName('');
+    }
+  };
+
   const handleRefreshAccountQuota = async (account: AuthFileItem) => {
     const name = String(account.name ?? '').trim();
     if (!name) return;
@@ -614,6 +814,7 @@ export function DashboardPage() {
         [name]: detail,
       }));
       showNotification('订阅与额度信息已刷新', 'success');
+      void loadAccounts();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '订阅与额度查询失败';
       setQuotaByAccount((prev) => ({
@@ -621,6 +822,7 @@ export function DashboardPage() {
         [name]: { status: 'error', windows: [], error: message },
       }));
       showNotification(message, 'error');
+      void loadAccounts();
     }
   };
 
@@ -711,6 +913,48 @@ export function DashboardPage() {
           detail={`最近成功率 ${stats.successRate}%`}
           tone={stats.proxyCount === stats.total && stats.total > 0 ? 'good' : 'neutral'}
         />
+      </section>
+
+      <section className={styles.accessPanel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <h2>连接凭证</h2>
+            <p>客户端 API Key 用于模型接口；管理员登录密码只用于进入管理面板。</p>
+          </div>
+          <span className={styles.connectionBadge}>
+            {apiBase || (typeof window !== 'undefined' ? window.location.origin : '')}
+          </span>
+        </div>
+        <div className={styles.accessGrid}>
+          <label className={styles.textareaField}>
+            <span>客户端 API Key</span>
+            <textarea
+              value={apiKeyDraft}
+              onChange={(event) => setApiKeyDraft(event.target.value)}
+              placeholder="每行一个客户端 API Key"
+              spellCheck={false}
+            />
+          </label>
+          <div className={styles.accessForm}>
+            <Input
+              label="管理员登录密码"
+              type="password"
+              value={adminPasswordDraft}
+              onChange={(event) => setAdminPasswordDraft(event.target.value)}
+              placeholder="留空则不修改"
+              hint="保存后用于 management.html 登录；它不是客户端调用 /v1 的 API Key。"
+            />
+            <div className={styles.accessActions}>
+              <Button variant="secondary" onClick={handleGenerateApiKey}>
+                <IconShield size={16} />
+                生成 API Key
+              </Button>
+              <Button onClick={handleSaveAccessSettings} loading={savingAccessSettings}>
+                保存连接凭证
+              </Button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className={styles.workspace}>
@@ -915,6 +1159,15 @@ export function DashboardPage() {
                     )}
                   </div>
                   <div className={styles.accountActions}>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      loading={deletingName === name}
+                      onClick={() => handleDeleteAccount(account)}
+                    >
+                      <IconTrash2 size={15} />
+                      删除
+                    </Button>
                     <Button variant="secondary" size="sm" onClick={() => openEditor(account)}>
                       <IconSettings size={15} />
                       设置

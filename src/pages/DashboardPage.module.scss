@@ -9,6 +9,7 @@
 }
 
 .hero,
+.accessPanel,
 .importPanel,
 .strategyPanel,
 .accountSection {
@@ -149,6 +150,7 @@
 }
 
 .importPanel,
+.accessPanel,
 .strategyPanel,
 .accountSection {
   padding: $spacing-lg;
@@ -243,6 +245,30 @@
   font-family: $font-mono;
   font-size: 12px;
   word-break: break-all;
+}
+
+.accessGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr);
+  gap: $spacing-lg;
+  align-items: start;
+
+  @media (max-width: 860px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.accessForm {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.accessActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
 }
 
 .accountGrid {
@@ -514,6 +540,7 @@
   display: flex;
   justify-content: flex-end;
   gap: $spacing-sm;
+  flex-wrap: wrap;
   margin-top: auto;
 }
 
