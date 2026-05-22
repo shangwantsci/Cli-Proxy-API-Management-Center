@@ -79,7 +79,7 @@ const normalizeClaudeModelEntries = (entries: Array<{ name: string; alias: strin
 
 const normalizeCloakConfig = (cloak: ProviderFormState['cloak']) => {
   if (!cloak) return null;
-  const mode = String(cloak.mode ?? '').trim().toLowerCase() || 'auto';
+  const mode = String(cloak.mode ?? '').trim().toLowerCase() || 'always';
   const strictMode = Boolean(cloak.strictMode);
   const sensitiveWords = Array.isArray(cloak.sensitiveWords)
     ? cloak.sensitiveWords.map((word) => String(word ?? '').trim()).filter(Boolean)

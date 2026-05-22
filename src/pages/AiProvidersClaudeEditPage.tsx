@@ -108,8 +108,8 @@ export function AiProvidersClaudeEditPage() {
 
   const cloakModeOptions = useMemo(
     () => [
-      { value: 'auto', label: t('ai_providers.claude_cloak_mode_auto') },
       { value: 'always', label: t('ai_providers.claude_cloak_mode_always') },
+      { value: 'auto', label: t('ai_providers.claude_cloak_mode_auto') },
       { value: 'never', label: t('ai_providers.claude_cloak_mode_never') },
     ],
     [t]
@@ -117,10 +117,10 @@ export function AiProvidersClaudeEditPage() {
 
   const resolvedCloakMode = useMemo(() => {
     const mode = (form.cloak?.mode ?? '').trim().toLowerCase();
-    if (!mode) return 'auto';
-    if (mode === 'provider') return 'auto';
+    if (!mode) return 'always';
+    if (mode === 'provider') return 'always';
     if (mode === 'auto' || mode === 'always' || mode === 'never') return mode;
-    return 'auto';
+    return 'always';
   }, [form.cloak?.mode]);
 
   const connectivityConfigSignature = useMemo(() => {
@@ -496,8 +496,8 @@ export function AiProvidersClaudeEditPage() {
 
                         const restored = prev.cloak
                           ?? lastCloakConfigRef.current
-                          ?? { mode: 'auto', strictMode: false, sensitiveWords: [] };
-                        const mode = String(restored.mode ?? 'auto').trim() || 'auto';
+                          ?? { mode: 'always', strictMode: false, sensitiveWords: [] };
+                        const mode = String(restored.mode ?? 'always').trim() || 'always';
                         return {
                           ...prev,
                           cloak: {

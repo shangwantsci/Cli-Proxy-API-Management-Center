@@ -79,8 +79,8 @@ interface AccountQuotaDetail {
 }
 
 const CLOAK_MODE_OPTIONS = [
-  { value: 'auto', label: '自动识别并补齐' },
   { value: 'always', label: '始终伪装为 Claude Code' },
+  { value: 'auto', label: '仅真实 Claude Code 放行' },
   { value: 'never', label: '关闭伪装' },
 ];
 
@@ -321,7 +321,7 @@ function makeEditForm(account: AuthFileItem): AccountEditForm {
     prefix: readString(record, ['prefix']),
     priority: readString(record, ['priority']),
     note: readString(record, ['note']),
-    cloakMode: readString(record, ['cloak_mode', 'cloakMode']) || 'auto',
+    cloakMode: readString(record, ['cloak_mode', 'cloakMode']) || 'always',
     cloakStrictMode: readBool(record, ['cloak_strict_mode', 'cloakStrictMode'], false),
     cloakCacheUserId: readBool(record, ['cloak_cache_user_id', 'cloakCacheUserId'], true),
     cloakSensitiveWords: getSensitiveWords(account).join('\n'),
@@ -737,7 +737,7 @@ export function DashboardPage() {
       },
       {
         label: 'Claude Code 指纹',
-        value: configText(claudeHeaders['user-agent'], 'claude-cli/2.1.92'),
+        value: configText(claudeHeaders['user-agent'], 'claude-cli/2.1.148'),
         detail: readBool(claudeHeaders, ['stabilize-device-profile'], true)
           ? '设备画像稳定'
           : '跟随请求动态变化',
@@ -1099,7 +1099,7 @@ export function DashboardPage() {
               const proxyUrl = readString(record, ['proxy_url', 'proxyUrl']);
               const prefix = readString(record, ['prefix']) || '默认';
               const priority = readNumber(record, ['priority'], 0);
-              const cloakMode = readString(record, ['cloak_mode', 'cloakMode']) || 'auto';
+              const cloakMode = readString(record, ['cloak_mode', 'cloakMode']) || 'always';
               const cacheUserId = readBool(record, ['cloak_cache_user_id', 'cloakCacheUserId'], true);
               const quotaDetail = name ? quotaByAccount[name] : undefined;
               const permanentError = claudePermanentAccountError(record);

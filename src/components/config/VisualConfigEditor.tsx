@@ -470,21 +470,21 @@ export function VisualConfigEditor({
               <SectionGrid>
                 <Input
                   label="User-Agent"
-                  placeholder="claude-cli/2.1.44 (external, sdk-cli)"
+                  placeholder="claude-cli/2.1.148 (external, cli)"
                   value={values.claudeHeaderUserAgent}
                   onChange={(e) => onChange({ claudeHeaderUserAgent: e.target.value })}
                   disabled={disabled}
                 />
                 <Input
                   label="Package Version"
-                  placeholder="0.74.0"
+                  placeholder="0.98.0"
                   value={values.claudeHeaderPackageVersion}
                   onChange={(e) => onChange({ claudeHeaderPackageVersion: e.target.value })}
                   disabled={disabled}
                 />
                 <Input
                   label="Runtime Version"
-                  placeholder="v24.3.0"
+                  placeholder="v24.13.0"
                   value={values.claudeHeaderRuntimeVersion}
                   onChange={(e) => onChange({ claudeHeaderRuntimeVersion: e.target.value })}
                   disabled={disabled}
