@@ -44,7 +44,14 @@ import {
 } from '@/utils/recentRequests';
 import styles from './DashboardPage.module.scss';
 
-type AccountState = 'active' | 'cooling' | 'disabled' | 'unavailable';
+type AccountState =
+  | 'active'
+  | 'cooling'
+  | 'quotaCooling'
+  | 'authExpired'
+  | 'requestError'
+  | 'disabled'
+  | 'unavailable';
 
 interface AccountEditForm {
   proxyUrl: string;
@@ -255,12 +262,103 @@ function claudePermanentAccountError(record: Record<string, unknown>): { code: s
   return null;
 }
 
+function accountQuotaInfo(record: Record<string, unknown>): {
+  exceeded: boolean;
+  reason: string;
+  recoverAt: unknown;
+} {
+  const quota = readRecord(record.quota);
+  const exceeded =
+    readBool(record, ['quota_exceeded', 'quotaExceeded'], false) ||
+    readBool(quota ?? {}, ['exceeded'], false);
+  return {
+    exceeded,
+    reason:
+      readString(record, ['quota_reason', 'quotaReason']) ||
+      readString(quota ?? {}, ['reason']) ||
+      '',
+    recoverAt:
+      record.quota_next_recover_at ??
+      record.quotaNextRecoverAt ??
+      quota?.next_recover_at ??
+      quota?.nextRecoverAt,
+  };
+}
+
+function accountErrorCombinedText(record: Record<string, unknown>): string {
+  const error = readRecord(record.last_error ?? record.lastError);
+  const parts: string[] = [
+    readString(record, ['status_message', 'statusMessage']),
+    readString(record, ['health_status', 'healthStatus']),
+    readString(error ?? {}, ['http_status', 'httpStatus']),
+    readString(error ?? {}, ['code']),
+    readString(error ?? {}, ['message']),
+  ].filter(Boolean);
+
+  const message = readString(error ?? {}, ['message']);
+  if (message.trim().startsWith('{')) {
+    try {
+      const payload = readRecord(JSON.parse(message));
+      const nestedError = readRecord(payload?.error);
+      const details = readRecord(nestedError?.details);
+      parts.push(
+        readString(nestedError ?? {}, ['type', 'code']),
+        readString(nestedError ?? {}, ['message']),
+        readString(details ?? {}, ['error_code', 'errorCode'])
+      );
+    } catch {
+      /* keep raw message */
+    }
+  }
+  return parts.join(' ').toLowerCase();
+}
+
+function isAccountQuotaCooling(record: Record<string, unknown>): boolean {
+  const quota = accountQuotaInfo(record);
+  if (!quota.exceeded) return false;
+  const recoverAt = parseDateMs(quota.recoverAt);
+  if (recoverAt > Date.now()) return true;
+  const nextRetryAt = parseDateMs(record.next_retry_after ?? record.nextRetryAfter);
+  return nextRetryAt > Date.now();
+}
+
+function isAccountAuthExpired(account: AuthFileItem): boolean {
+  const record = account as Record<string, unknown>;
+  const status = String(record.health_status ?? record.healthStatus ?? account.status ?? '')
+    .trim()
+    .toLowerCase();
+  if (status.includes('expired')) return true;
+  const combined = accountErrorCombinedText(record);
+  return (
+    combined.includes('401') ||
+    combined.includes('unauthorized') ||
+    combined.includes('invalid authentication credentials') ||
+    combined.includes('invalid_grant')
+  );
+}
+
+function isAccountRequestBodyError(record: Record<string, unknown>): boolean {
+  const combined = accountErrorCombinedText(record);
+  return (
+    combined.includes('invalid_request_error') ||
+    combined.includes('invalid signature') ||
+    combined.includes('could not process image') ||
+    combined.includes('tool_choice') ||
+    combined.includes('input_schema') ||
+    combined.includes('schema') ||
+    combined.includes('third-party apps now draw from your extra usage')
+  );
+}
+
 function getAccountState(account: AuthFileItem): AccountState {
   const record = account as Record<string, unknown>;
   if (account.disabled) return 'disabled';
   if (claudePermanentAccountError(record)) return 'disabled';
+  if (isAccountAuthExpired(account)) return 'authExpired';
+  if (isAccountQuotaCooling(record)) return 'quotaCooling';
   const nextRetryAt = parseDateMs(record.next_retry_after ?? record.nextRetryAfter);
   if (nextRetryAt > Date.now()) return 'cooling';
+  if (isAccountRequestBodyError(record)) return 'requestError';
   const status = String(account.status ?? '').trim().toLowerCase();
   const message = String(account.statusMessage ?? record.status_message ?? '').trim().toLowerCase();
   if (account.unavailable || status.includes('error') || status.includes('unavailable')) {
@@ -277,7 +375,13 @@ function accountStateLabel(state: AccountState): string {
     case 'active':
       return '可用';
     case 'cooling':
-      return '冷却中';
+      return '重试冷却';
+    case 'quotaCooling':
+      return '限额冷却';
+    case 'authExpired':
+      return '认证过期';
+    case 'requestError':
+      return '请求异常';
     case 'disabled':
       return '已停用';
     case 'unavailable':
@@ -290,6 +394,19 @@ function accountStateDetail(account: AuthFileItem): string {
   const permanentError = claudePermanentAccountError(record);
   if (permanentError) {
     return `上游已禁用：${permanentError.message}`;
+  }
+  if (isAccountAuthExpired(account)) {
+    return 'OAuth 授权过期或凭证无效';
+  }
+  if (isAccountQuotaCooling(record)) {
+    const quota = accountQuotaInfo(record);
+    const recoverAt = parseDateMs(quota.recoverAt)
+      ? quota.recoverAt
+      : record.next_retry_after ?? record.nextRetryAfter;
+    return `限额恢复 ${formatDate(recoverAt)}`;
+  }
+  if (isAccountRequestBodyError(record)) {
+    return '请求体或工具调用需要处理';
   }
   const retryAt = record.next_retry_after ?? record.nextRetryAfter;
   if (parseDateMs(retryAt) > Date.now()) {
@@ -538,6 +655,12 @@ function healthStatusLabel(value: unknown): string {
       return '即将过期';
     case 'expired':
       return '认证过期';
+    case 'quota_cooling':
+      return '限额冷却';
+    case 'auth_expired':
+      return '认证过期';
+    case 'request_error':
+      return '请求异常';
     case 'unavailable':
       return '不可用';
     case 'disabled':
@@ -554,12 +677,17 @@ function healthStatusLabel(value: unknown): string {
 }
 
 function quotaRuntimeText(record: Record<string, unknown>): string {
-  if (readBool(record, ['quota_exceeded', 'quotaExceeded'], false)) {
-    return readString(record, ['quota_reason', 'quotaReason']) || '额度/频率受限';
-  }
-  const quota = readRecord(record.quota);
-  if (quota && readBool(quota, ['exceeded'], false)) {
-    return readString(quota, ['reason']) || '额度/频率受限';
+  const quota = accountQuotaInfo(record);
+  if (quota.exceeded) {
+    const reason = quota.reason || '额度/频率受限';
+    const recoverAt = parseDateMs(quota.recoverAt);
+    if (recoverAt > Date.now()) {
+      return `${reason}，恢复 ${formatDate(quota.recoverAt)}`;
+    }
+    if (recoverAt > 0) {
+      return `${reason}，已到恢复时间`;
+    }
+    return reason;
   }
   return '未触发限额';
 }
@@ -574,7 +702,18 @@ function lastErrorText(record: Record<string, unknown>): string {
   const status = readString(error, ['http_status', 'httpStatus']);
   const code = readString(error, ['code']);
   const message = readString(error, ['message']);
-  return [status, code, message].filter(Boolean).join(' / ') || '有错误记录';
+  const body = [status, code, message].filter(Boolean).join(' / ') || '有错误记录';
+  if (isAccountQuotaCooling(record) || code === 'quota_exhausted' || code === 'rate_limited') {
+    return `限额冷却 / ${body}`;
+  }
+  if (isAccountRequestBodyError(record)) {
+    return `请求体错误 / ${body}`;
+  }
+  const combined = accountErrorCombinedText(record);
+  if (combined.includes('401') || combined.includes('unauthorized')) {
+    return `认证错误 / ${body}`;
+  }
+  return body;
 }
 
 function formatQuotaPercent(value: number | null): string {
@@ -691,8 +830,10 @@ export function DashboardPage() {
     return {
       total: accounts.length,
       active: states.filter((state) => state === 'active').length,
-      cooling: states.filter((state) => state === 'cooling').length,
-      unavailable: states.filter((state) => state === 'unavailable').length,
+      cooling: states.filter((state) => state === 'cooling' || state === 'quotaCooling').length,
+      unavailable: states.filter(
+        (state) => state === 'unavailable' || state === 'authExpired' || state === 'requestError'
+      ).length,
       disabled: states.filter((state) => state === 'disabled').length,
       proxyCount,
       successRate: total > 0 ? Math.round((success / total) * 100) : 100,
@@ -1103,6 +1244,11 @@ export function DashboardPage() {
               const cacheUserId = readBool(record, ['cloak_cache_user_id', 'cloakCacheUserId'], true);
               const quotaDetail = name ? quotaByAccount[name] : undefined;
               const permanentError = claudePermanentAccountError(record);
+              const healthLabel = permanentError
+                ? '上游已禁用'
+                : state === 'active'
+                  ? healthStatusLabel(record.health_status ?? record.healthStatus)
+                  : accountStateLabel(state);
 
               return (
                 <article key={name || getAccountTitle(account)} className={styles.accountCard}>
@@ -1151,7 +1297,7 @@ export function DashboardPage() {
                     </div>
                     <div>
                       <dt>健康</dt>
-                      <dd>{permanentError ? '上游已禁用' : healthStatusLabel(record.health_status ?? record.healthStatus)}</dd>
+                      <dd>{healthLabel}</dd>
                     </div>
                     <div>
                       <dt>有效期</dt>

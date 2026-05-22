@@ -342,14 +342,17 @@
   background: rgba($success-color, 0.1);
 }
 
-.cooling {
+.cooling,
+.quotaCooling {
   color: $warning-color;
   border-color: rgba($warning-color, 0.34);
   background: rgba($warning-color, 0.1);
 }
 
 .disabled,
-.unavailable {
+.unavailable,
+.authExpired,
+.requestError {
   color: $error-color;
   border-color: rgba($error-color, 0.34);
   background: rgba($error-color, 0.1);
