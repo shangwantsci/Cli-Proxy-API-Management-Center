@@ -11,6 +11,13 @@ type StatusError = { status?: number };
 type AuthFileStatusResponse = { status: string; disabled: boolean };
 type AuthFileEntry = AuthFilesResponse['files'][number];
 type ClaudeAuthHealthResponse = { accounts?: AuthFileEntry[] };
+type ClaudeAuthReauthResponse = {
+  status: string;
+  name?: string;
+  auth_source?: string;
+  expires_at?: string;
+  account?: AuthFileEntry;
+};
 export type AuthFileFieldsPatch = {
   prefix?: string;
   proxy_url?: string;
@@ -421,6 +428,9 @@ export const authFilesApi = {
 
   patchFields: (name: string, fields: AuthFileFieldsPatch) =>
     apiClient.patch('/auth-files/fields', { name, ...fields }),
+
+  reauthenticateClaude: (name: string) =>
+    apiClient.post<ClaudeAuthReauthResponse>('/auth-files/reauth', { name }),
 
   uploadFiles: async (files: File[]): Promise<AuthFileBatchUploadResult> => {
     const requestedNames = files.map((file) => file.name);

@@ -104,7 +104,7 @@ export function OAuthPage() {
       });
       setAuthUrl(result.url);
       setAuthState(result.state || '');
-      setStatusText('请在新窗口完成 Claude 授权，然后把浏览器地址栏里的回调 URL 粘贴到下方');
+      setStatusText('请在新窗口完成 Claude 授权；跳到 localhost 后复制地址栏完整回调 URL 粘贴到下方');
       if (result.state) {
         pollStatus(result.state);
       }
@@ -194,8 +194,8 @@ export function OAuthPage() {
         >
           <div className={styles.cardContent}>
             <p className={styles.cardHint}>
-              推荐优先使用 OAuth。授权成功后，后端会保存刷新令牌，后续 access token
-              过期时可以自动刷新。服务器默认出口不可用时，请先配置该账号专属代理。
+              默认模拟 Claude Code CLI 登录。授权后浏览器跳到 localhost 属于正常现象，复制地址栏完整回调
+              URL 提交即可；后端会保存刷新令牌用于长期续期。
             </p>
             <Input
               label="该账号专属代理"
@@ -238,8 +238,8 @@ export function OAuthPage() {
                 label="手动提交回调"
                 value={callbackUrl}
                 onChange={(event) => setCallbackUrl(event.target.value)}
-                placeholder="粘贴 Claude 回跳 URL，或 code=...&state=..."
-                hint="浏览器没有自动回到本面板时使用。"
+                placeholder="http://localhost:54545/callback?code=...&state=..."
+                hint="浏览器打开 localhost 失败也没关系，复制地址栏完整 URL 后提交。"
               />
               <div className={styles.callbackActions}>
                 <Button variant="secondary" onClick={submitCallback} loading={callbackSubmitting}>
@@ -260,8 +260,8 @@ export function OAuthPage() {
         >
           <div className={styles.cardContent}>
             <p className={styles.cardHint}>
-              适合已有 claude.ai 登录态时快速导入。sessionKey 只用于向 Claude
-              请求授权，保存的是 OAuth token。
+              适合已有 claude.ai 登录态时快速导入。后端会优先换取 Claude Code CLI 风格 token；
+              如果上游不接受 localhost 回调，会自动回退兼容模式。
             </p>
             <div className={styles.cookieSection}>
               <Input

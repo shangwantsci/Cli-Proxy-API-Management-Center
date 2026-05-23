@@ -774,6 +774,7 @@ export function DashboardPage() {
   const [savingAccount, setSavingAccount] = useState(false);
   const [togglingName, setTogglingName] = useState('');
   const [deletingName, setDeletingName] = useState('');
+  const [reauthenticatingName, setReauthenticatingName] = useState('');
   const [quotaByAccount, setQuotaByAccount] = useState<Record<string, AccountQuotaDetail>>({});
 
   const loadAccessSettings = useCallback(async () => {
@@ -1011,6 +1012,32 @@ export function DashboardPage() {
       showNotification(message, 'error');
     } finally {
       setDeletingName('');
+    }
+  };
+
+  const handleReauthenticateAccount = async (account: AuthFileItem) => {
+    const name = String(account.name ?? '').trim();
+    if (!name) return;
+    const permanentError = claudePermanentAccountError(account as Record<string, unknown>);
+    if (permanentError) {
+      showNotification(`该账号已被上游禁用，不能通过重认证恢复：${permanentError.message}`, 'error');
+      return;
+    }
+    setReauthenticatingName(name);
+    try {
+      await authFilesApi.reauthenticateClaude(name);
+      setQuotaByAccount((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      showNotification('Claude 账号认证已刷新并恢复', 'success');
+      await loadAccounts();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '账号重认证失败';
+      showNotification(message, 'error');
+    } finally {
+      setReauthenticatingName('');
     }
   };
 
@@ -1413,6 +1440,17 @@ export function DashboardPage() {
                       <IconSettings size={15} />
                       设置
                     </Button>
+                    {!permanentError && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={reauthenticatingName === name}
+                        onClick={() => handleReauthenticateAccount(account)}
+                      >
+                        <IconRefreshCw size={15} />
+                        重认证
+                      </Button>
+                    )}
                     <Button
                       variant={account.disabled ? 'primary' : 'ghost'}
                       size="sm"
