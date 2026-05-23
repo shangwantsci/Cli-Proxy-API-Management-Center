@@ -36,6 +36,19 @@ export interface ClaudeCookieAuthResponse {
   auth_file?: string;
   path?: string;
   email?: string;
+  auth_source?: string;
+  auth_method_label?: string;
+  token_endpoint?: string;
+  redirect_uri?: string;
+}
+
+export interface OAuthStatusResponse {
+  status: 'ok' | 'wait' | 'error';
+  error?: string;
+  auth_source?: string;
+  auth_method_label?: string;
+  token_endpoint?: string;
+  redirect_uri?: string;
 }
 
 const WEBUI_SUPPORTED: OAuthProvider[] = [
@@ -109,7 +122,7 @@ export const oauthApi = {
   },
 
   getAuthStatus: (state: string) =>
-    apiClient.get<{ status: 'ok' | 'wait' | 'error'; error?: string }>(`/get-auth-status`, {
+    apiClient.get<OAuthStatusResponse>(`/get-auth-status`, {
       params: { state }
     }),
 

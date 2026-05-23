@@ -13,12 +13,17 @@ export type VisualConfigFieldPath =
   | 'requestRetry'
   | 'maxRetryCredentials'
   | 'maxRetryInterval'
+  | 'claudeQuotaFiveHourRemainingPercent'
+  | 'claudeQuotaWeeklyRemainingPercent'
   | 'authAutoRefreshWorkers'
   | 'streaming.keepaliveSeconds'
   | 'streaming.bootstrapRetries'
   | 'streaming.nonstreamKeepaliveInterval';
 
-export type VisualConfigValidationErrorCode = 'port_range' | 'non_negative_integer';
+export type VisualConfigValidationErrorCode =
+  | 'port_range'
+  | 'non_negative_integer'
+  | 'percent_range';
 
 export type VisualConfigValidationErrors = Partial<
   Record<VisualConfigFieldPath, VisualConfigValidationErrorCode>
@@ -93,6 +98,8 @@ export type VisualConfigValues = {
   requestRetry: string;
   maxRetryCredentials: string;
   maxRetryInterval: string;
+  claudeQuotaFiveHourRemainingPercent: string;
+  claudeQuotaWeeklyRemainingPercent: string;
   disableCooling: boolean;
   disableImageGeneration: DisableImageGenerationMode;
   authAutoRefreshWorkers: string;
@@ -154,6 +161,8 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   requestRetry: '2',
   maxRetryCredentials: '0',
   maxRetryInterval: '30',
+  claudeQuotaFiveHourRemainingPercent: '20',
+  claudeQuotaWeeklyRemainingPercent: '10',
   disableCooling: false,
   disableImageGeneration: 'false',
   authAutoRefreshWorkers: '',

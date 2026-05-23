@@ -164,6 +164,14 @@ function getNonNegativeIntegerError(value: string): 'non_negative_integer' | und
   return Number(trimmed) >= 0 ? undefined : 'non_negative_integer';
 }
 
+function getPercentIntegerError(value: string): 'percent_range' | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!/^-?\d+$/.test(trimmed)) return 'percent_range';
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 100 ? undefined : 'percent_range';
+}
+
 export function getVisualConfigValidationErrors(
   values: VisualConfigValues
 ): VisualConfigValidationErrors {
@@ -171,6 +179,12 @@ export function getVisualConfigValidationErrors(
     requestRetry: getNonNegativeIntegerError(values.requestRetry),
     maxRetryCredentials: getNonNegativeIntegerError(values.maxRetryCredentials),
     maxRetryInterval: getNonNegativeIntegerError(values.maxRetryInterval),
+    claudeQuotaFiveHourRemainingPercent: getPercentIntegerError(
+      values.claudeQuotaFiveHourRemainingPercent
+    ),
+    claudeQuotaWeeklyRemainingPercent: getPercentIntegerError(
+      values.claudeQuotaWeeklyRemainingPercent
+    ),
     authAutoRefreshWorkers: getNonNegativeIntegerError(values.authAutoRefreshWorkers),
     'streaming.keepaliveSeconds': getNonNegativeIntegerError(values.streaming.keepaliveSeconds),
     'streaming.bootstrapRetries': getNonNegativeIntegerError(values.streaming.bootstrapRetries),
@@ -695,6 +709,24 @@ function applyClaudeStrategyVisualChangesToDoc(
     dirtyFields,
     'maxRetryInterval'
   );
+  if (
+    docHas(doc, ['claude-quota-cooling-thresholds']) ||
+    dirtyFields.has('claudeQuotaFiveHourRemainingPercent') ||
+    dirtyFields.has('claudeQuotaWeeklyRemainingPercent')
+  ) {
+    ensureMapInDoc(doc, ['claude-quota-cooling-thresholds']);
+    setIntFromStringInDoc(
+      doc,
+      ['claude-quota-cooling-thresholds', 'five-hour-remaining-percent'],
+      values.claudeQuotaFiveHourRemainingPercent
+    );
+    setIntFromStringInDoc(
+      doc,
+      ['claude-quota-cooling-thresholds', 'weekly-remaining-percent'],
+      values.claudeQuotaWeeklyRemainingPercent
+    );
+    deleteIfMapEmpty(doc, ['claude-quota-cooling-thresholds']);
+  }
   setBooleanInDoc(doc, ['disable-cooling'], values.disableCooling);
   setManagedDisableImageGenerationInDoc(
     doc,
@@ -959,6 +991,20 @@ function getNextDirtyFields(
       nextValues.maxRetryInterval === baselineValues.maxRetryInterval
     );
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'claudeQuotaFiveHourRemainingPercent')) {
+    updateDirty(
+      'claudeQuotaFiveHourRemainingPercent',
+      nextValues.claudeQuotaFiveHourRemainingPercent ===
+        baselineValues.claudeQuotaFiveHourRemainingPercent
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'claudeQuotaWeeklyRemainingPercent')) {
+    updateDirty(
+      'claudeQuotaWeeklyRemainingPercent',
+      nextValues.claudeQuotaWeeklyRemainingPercent ===
+        baselineValues.claudeQuotaWeeklyRemainingPercent
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(patch, 'wsAuth')) {
     updateDirty('wsAuth', nextValues.wsAuth === baselineValues.wsAuth);
   }
@@ -1132,6 +1178,7 @@ export function useVisualConfig() {
       const routing = asRecord(parsed.routing);
       const payload = asRecord(parsed.payload);
       const streaming = asRecord(parsed.streaming);
+      const claudeQuotaCoolingThresholds = asRecord(parsed['claude-quota-cooling-thresholds']);
       const claudeHeaderDefaults = asRecord(parsed['claude-header-defaults']);
       const codexHeaderDefaults = asRecord(parsed['codex-header-defaults']);
 
@@ -1179,6 +1226,14 @@ export function useVisualConfig() {
         ),
         maxRetryInterval: String(
           parsed['max-retry-interval'] ?? DEFAULT_VISUAL_VALUES.maxRetryInterval
+        ),
+        claudeQuotaFiveHourRemainingPercent: String(
+          claudeQuotaCoolingThresholds?.['five-hour-remaining-percent'] ??
+            DEFAULT_VISUAL_VALUES.claudeQuotaFiveHourRemainingPercent
+        ),
+        claudeQuotaWeeklyRemainingPercent: String(
+          claudeQuotaCoolingThresholds?.['weekly-remaining-percent'] ??
+            DEFAULT_VISUAL_VALUES.claudeQuotaWeeklyRemainingPercent
         ),
         disableCooling: Boolean(parsed['disable-cooling']),
         disableImageGeneration: parseDisableImageGenerationMode(parsed['disable-image-generation']),
@@ -1352,6 +1407,24 @@ export function useVisualConfig() {
         setIntFromStringInDoc(doc, ['request-retry'], values.requestRetry);
         setIntFromStringInDoc(doc, ['max-retry-credentials'], values.maxRetryCredentials);
         setIntFromStringInDoc(doc, ['max-retry-interval'], values.maxRetryInterval);
+        if (
+          docHas(doc, ['claude-quota-cooling-thresholds']) ||
+          dirtyFields.has('claudeQuotaFiveHourRemainingPercent') ||
+          dirtyFields.has('claudeQuotaWeeklyRemainingPercent')
+        ) {
+          ensureMapInDoc(doc, ['claude-quota-cooling-thresholds']);
+          setIntFromStringInDoc(
+            doc,
+            ['claude-quota-cooling-thresholds', 'five-hour-remaining-percent'],
+            values.claudeQuotaFiveHourRemainingPercent
+          );
+          setIntFromStringInDoc(
+            doc,
+            ['claude-quota-cooling-thresholds', 'weekly-remaining-percent'],
+            values.claudeQuotaWeeklyRemainingPercent
+          );
+          deleteIfMapEmpty(doc, ['claude-quota-cooling-thresholds']);
+        }
         setBooleanInDoc(doc, ['disable-cooling'], values.disableCooling);
         setDisableImageGenerationInDoc(
           doc,

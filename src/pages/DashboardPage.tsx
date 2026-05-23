@@ -646,6 +646,20 @@ function configText(value: unknown, fallback: string): string {
   return fallback;
 }
 
+function claudeAuthMethodText(record: Record<string, unknown>): string {
+  const explicitLabel = readString(record, ['auth_method_label', 'authMethodLabel']);
+  if (explicitLabel) return explicitLabel;
+  const source = readString(record, ['auth_source', 'authSource']);
+  switch (source) {
+    case 'claude_code_cli':
+      return 'Claude Code CLI OAuth';
+    case 'claude_platform':
+      return 'Platform OAuth';
+    default:
+      return '未知';
+  }
+}
+
 function healthStatusLabel(value: unknown): string {
   const status = String(value ?? '').trim().toLowerCase();
   switch (status) {
@@ -1346,6 +1360,10 @@ export function DashboardPage() {
                     <div>
                       <dt>健康</dt>
                       <dd>{healthLabel}</dd>
+                    </div>
+                    <div>
+                      <dt>认证方式</dt>
+                      <dd>{claudeAuthMethodText(record)}</dd>
                     </div>
                     <div>
                       <dt>有效期</dt>

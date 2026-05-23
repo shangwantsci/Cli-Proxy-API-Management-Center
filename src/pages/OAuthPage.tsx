@@ -21,6 +21,18 @@ function errorMessage(error: unknown): string {
   return '操作失败';
 }
 
+function authMethodText(source?: string, label?: string): string {
+  if (label?.trim()) return label.trim();
+  switch (source?.trim()) {
+    case 'claude_code_cli':
+      return 'Claude Code CLI OAuth';
+    case 'claude_platform':
+      return 'Platform OAuth';
+    default:
+      return '未知认证来源';
+  }
+}
+
 export function OAuthPage() {
   const { showNotification } = useNotificationStore();
   const pollTimer = useRef<number | null>(null);
@@ -78,7 +90,7 @@ export function OAuthPage() {
         try {
           const result = await oauthApi.getAuthStatus(state);
           if (result.status === 'ok') {
-            markSuccess('Claude OAuth 授权完成，账号已加入账号池');
+            markSuccess(`Claude OAuth 授权完成：${authMethodText(result.auth_source, result.auth_method_label)}`);
           } else if (result.status === 'error') {
             clearPollTimer();
             setStatus('error');
@@ -158,9 +170,10 @@ export function OAuthPage() {
         proxyUrl: proxyUrl.trim() || undefined,
       });
       const label = result.email || result.auth_file || 'Claude';
-      setCookieResult(`已导入 ${label}`);
+      const method = authMethodText(result.auth_source, result.auth_method_label);
+      setCookieResult(`已导入 ${label}，认证方式：${method}`);
       setSessionKey('');
-      markSuccess('Cookie 换授权完成，账号已加入账号池');
+      markSuccess(`Cookie 换授权完成：${method}`);
     } catch (error) {
       showNotification(`Cookie 换授权失败：${errorMessage(error)}`, 'error');
     } finally {

@@ -35,6 +35,8 @@ export interface AuthFileItem {
   expiresAt?: string | number;
   secondsUntilExpiration?: number;
   proxyUrl?: string;
+  authSource?: string;
+  authMethodLabel?: string;
   lastRefresh?: string | number;
   modified?: number;
   success?: unknown;

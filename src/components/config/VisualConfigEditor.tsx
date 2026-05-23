@@ -174,6 +174,12 @@ function disabledText(value: string) {
   return !trimmed || trimmed === '0' ? '关闭' : `${trimmed} 秒`;
 }
 
+function quotaThresholdText(fiveHour: string, weekly: string) {
+  const fiveHourText = fiveHour.trim() || '20';
+  const weeklyText = weekly.trim() || '10';
+  return `5h ${fiveHourText}% / 周 ${weeklyText}%`;
+}
+
 export function VisualConfigEditor({
   values,
   validationErrors,
@@ -196,6 +202,14 @@ export function VisualConfigEditor({
   const requestRetryError = getValidationMessage(t, validationErrors?.requestRetry);
   const maxRetryCredentialsError = getValidationMessage(t, validationErrors?.maxRetryCredentials);
   const maxRetryIntervalError = getValidationMessage(t, validationErrors?.maxRetryInterval);
+  const claudeQuotaFiveHourError = getValidationMessage(
+    t,
+    validationErrors?.claudeQuotaFiveHourRemainingPercent
+  );
+  const claudeQuotaWeeklyError = getValidationMessage(
+    t,
+    validationErrors?.claudeQuotaWeeklyRemainingPercent
+  );
   const authAutoRefreshWorkersError = getValidationMessage(
     t,
     validationErrors?.authAutoRefreshWorkers
@@ -238,6 +252,8 @@ export function VisualConfigEditor({
           'requestRetry',
           'maxRetryCredentials',
           'maxRetryInterval',
+          'claudeQuotaFiveHourRemainingPercent',
+          'claudeQuotaWeeklyRemainingPercent',
           'authAutoRefreshWorkers',
         ]),
       },
@@ -391,6 +407,13 @@ export function VisualConfigEditor({
           />
           <StrategyMetric label="换号" value={routingStrategyLabel} />
           <StrategyMetric label="重试账号" value={retryCredentialText(values.maxRetryCredentials)} />
+          <StrategyMetric
+            label="限额保护"
+            value={quotaThresholdText(
+              values.claudeQuotaFiveHourRemainingPercent,
+              values.claudeQuotaWeeklyRemainingPercent
+            )}
+          />
         </div>
       </div>
 
@@ -634,6 +657,41 @@ export function VisualConfigEditor({
                   error={authAutoRefreshWorkersError}
                 />
               </SectionGrid>
+              <SectionSubsection
+                title="订阅额度保护"
+                description="额度剩余达到阈值时，账号进入限额冷却并等待对应窗口重置。"
+              >
+                <SectionGrid>
+                  <Input
+                    label="5 小时窗口剩余阈值"
+                    type="number"
+                    min={0}
+                    max={100}
+                    placeholder="20"
+                    value={values.claudeQuotaFiveHourRemainingPercent}
+                    onChange={(e) =>
+                      onChange({ claudeQuotaFiveHourRemainingPercent: e.target.value })
+                    }
+                    disabled={disabled}
+                    hint="默认 20；填 0 表示只在 5h 额度用尽时冷却。"
+                    error={claudeQuotaFiveHourError}
+                  />
+                  <Input
+                    label="7 天窗口剩余阈值"
+                    type="number"
+                    min={0}
+                    max={100}
+                    placeholder="10"
+                    value={values.claudeQuotaWeeklyRemainingPercent}
+                    onChange={(e) =>
+                      onChange({ claudeQuotaWeeklyRemainingPercent: e.target.value })
+                    }
+                    disabled={disabled}
+                    hint="默认 10；适用于周限、Opus、Sonnet 等 7 天窗口。"
+                    error={claudeQuotaWeeklyError}
+                  />
+                </SectionGrid>
+              </SectionSubsection>
               <SectionGrid>
                 <ToggleRow
                   title="启用失败冷却隔离"
