@@ -66,6 +66,10 @@ type AccountState =
   | 'disabled'
   | 'unavailable';
 
+type AccountStateFilter = AccountState | 'all' | 'banned';
+type AccountProxyFilter = 'all' | 'withProxy' | 'defaultProxy' | 'direct';
+type AccountAuthFilter = 'all' | 'claude_code_cli' | 'claude_platform' | 'unknown';
+
 interface AccountEditForm {
   proxyUrl: string;
   prefix: string;
@@ -118,6 +122,34 @@ const CLOAK_MODE_OPTIONS = [
   { value: 'always', label: '始终伪装为 Claude Code' },
   { value: 'auto', label: '自动伪装：真实 Claude Code 不重写' },
   { value: 'never', label: '关闭伪装' },
+];
+
+const ACCOUNT_STATE_FILTER_OPTIONS = [
+  { value: 'all', label: '全部状态' },
+  { value: 'banned', label: '封禁/组织禁用' },
+  { value: 'authExpired', label: '认证过期' },
+  { value: 'quotaCooling', label: '限额冷却' },
+  { value: 'rpmCooling', label: 'RPM 冷却' },
+  { value: 'sessionFull', label: '新会话已满' },
+  { value: 'requestError', label: '请求异常' },
+  { value: 'subscriptionIssue', label: '订阅异常' },
+  { value: 'unavailable', label: '不可用' },
+  { value: 'disabled', label: '已停用' },
+  { value: 'active', label: '可用' },
+];
+
+const ACCOUNT_PROXY_FILTER_OPTIONS = [
+  { value: 'all', label: '全部代理' },
+  { value: 'withProxy', label: '已配置代理' },
+  { value: 'defaultProxy', label: '未配置代理' },
+  { value: 'direct', label: '直连账号' },
+];
+
+const ACCOUNT_AUTH_FILTER_OPTIONS = [
+  { value: 'all', label: '全部认证' },
+  { value: 'claude_code_cli', label: 'Claude Code CLI OAuth' },
+  { value: 'claude_platform', label: 'Platform OAuth' },
+  { value: 'unknown', label: '未知认证' },
 ];
 
 const parsePositiveInteger = (value: string, fallback: number): number => {
@@ -479,6 +511,16 @@ function getAccountState(account: AuthFileItem): AccountState {
   return 'active';
 }
 
+function isUpstreamDisabledAccount(record: Record<string, unknown>): boolean {
+  const statusReason = readStatusReason(record);
+  return (
+    statusReason === 'account_banned' ||
+    statusReason === 'organization_disabled' ||
+    statusReason === 'account_disabled' ||
+    claudePermanentAccountError(record) !== null
+  );
+}
+
 function accountStateLabel(state: AccountState): string {
   switch (state) {
     case 'active':
@@ -502,6 +544,70 @@ function accountStateLabel(state: AccountState): string {
     case 'unavailable':
       return '不可用';
   }
+}
+
+function accountMatchesStateFilter(
+  account: AuthFileItem,
+  state: AccountState,
+  filter: AccountStateFilter
+): boolean {
+  if (filter === 'all') return true;
+  const record = account as Record<string, unknown>;
+  if (filter === 'banned') return isUpstreamDisabledAccount(record);
+  return state === filter;
+}
+
+function accountAuthSource(record: Record<string, unknown>): string {
+  const source = readString(record, ['auth_source', 'authSource']).toLowerCase();
+  if (source) return source;
+  const label = claudeAuthMethodText(record).toLowerCase();
+  if (label.includes('claude code cli')) return 'claude_code_cli';
+  if (label.includes('platform')) return 'claude_platform';
+  return '';
+}
+
+function accountMatchesAuthFilter(
+  record: Record<string, unknown>,
+  filter: AccountAuthFilter
+): boolean {
+  if (filter === 'all') return true;
+  const source = accountAuthSource(record);
+  if (filter === 'unknown') return source === '';
+  return source === filter;
+}
+
+function accountMatchesProxyFilter(
+  record: Record<string, unknown>,
+  filter: AccountProxyFilter
+): boolean {
+  if (filter === 'all') return true;
+  const proxyUrl = readString(record, ['proxy_url', 'proxyUrl']);
+  const normalized = proxyUrl.toLowerCase();
+  if (filter === 'withProxy') return proxyUrl !== '';
+  if (filter === 'defaultProxy') return proxyUrl === '';
+  return normalized === 'direct' || normalized === 'none';
+}
+
+function accountSearchText(account: AuthFileItem): string {
+  const record = account as Record<string, unknown>;
+  const runtime = readRuntimeStats(record);
+  return [
+    getAccountTitle(account),
+    getAccountName(account),
+    readString(record, ['email', 'account', 'label']),
+    readString(record, ['proxy_url', 'proxyUrl']),
+    readString(record, ['prefix']),
+    readString(record, ['status_reason', 'statusReason']),
+    readString(record, ['status_reason_label', 'statusReasonLabel']),
+    claudeAuthMethodText(record),
+    accountStateDetail(account),
+    lastErrorText(record),
+    runtime.currentRpm,
+    runtime.maxSessions,
+  ]
+    .filter((item) => item !== '' && item !== undefined && item !== null)
+    .join(' ')
+    .toLowerCase();
 }
 
 function accountStateDetail(account: AuthFileItem): string {
@@ -994,9 +1100,7 @@ export function DashboardPage() {
   const [importing, setImporting] = useState(false);
   const [sessionKey, setSessionKey] = useState('');
   const [importProxyUrl, setImportProxyUrl] = useState('');
-  const [sessionImportSourceUrl, setSessionImportSourceUrl] = useState(
-    'https://sessionkeytest.globalpays.shop/accounts'
-  );
+  const [sessionImportSourceUrl, setSessionImportSourceUrl] = useState('');
   const [sessionImportApiPath, setSessionImportApiPath] = useState('/api/accounts');
   const [sessionImportConcurrency, setSessionImportConcurrency] = useState('10');
   const [sessionImportDelayMin, setSessionImportDelayMin] = useState('200');
@@ -1014,6 +1118,10 @@ export function DashboardPage() {
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
   const [batchForm, setBatchForm] = useState<BatchEditForm | null>(null);
   const [savingBatch, setSavingBatch] = useState(false);
+  const [accountSearch, setAccountSearch] = useState('');
+  const [accountStateFilter, setAccountStateFilter] = useState<AccountStateFilter>('all');
+  const [accountProxyFilter, setAccountProxyFilter] = useState<AccountProxyFilter>('all');
+  const [accountAuthFilter, setAccountAuthFilter] = useState<AccountAuthFilter>('all');
   const [togglingName, setTogglingName] = useState('');
   const [deletingName, setDeletingName] = useState('');
   const [reauthenticatingName, setReauthenticatingName] = useState('');
@@ -1198,6 +1306,32 @@ export function DashboardPage() {
   }, [accounts, quotaByAccount]);
 
   const selectedNameSet = useMemo(() => new Set(selectedNames), [selectedNames]);
+  const filteredAccounts = useMemo(() => {
+    const query = accountSearch.trim().toLowerCase();
+    return accounts.filter((account) => {
+      const record = account as Record<string, unknown>;
+      const name = getAccountName(account);
+      const quotaCoolingWindow = quotaDetailCoolingWindow(name ? quotaByAccount[name] : undefined);
+      const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
+      if (!accountMatchesStateFilter(account, state, accountStateFilter)) return false;
+      if (!accountMatchesProxyFilter(record, accountProxyFilter)) return false;
+      if (!accountMatchesAuthFilter(record, accountAuthFilter)) return false;
+      if (query && !accountSearchText(account).includes(query)) return false;
+      return true;
+    });
+  }, [accountAuthFilter, accountProxyFilter, accountSearch, accountStateFilter, accounts, quotaByAccount]);
+  const filteredAccountNames = useMemo(
+    () => filteredAccounts.map(getAccountName).filter(Boolean),
+    [filteredAccounts]
+  );
+  const allFilteredAccountsSelected =
+    filteredAccountNames.length > 0 &&
+    filteredAccountNames.every((name) => selectedNameSet.has(name));
+  const hasAccountFilters =
+    accountSearch.trim() !== '' ||
+    accountStateFilter !== 'all' ||
+    accountProxyFilter !== 'all' ||
+    accountAuthFilter !== 'all';
 
   const operationsOverview = useMemo(() => {
     const stateCounts = accounts.reduce<Record<AccountState, number>>(
@@ -1524,8 +1658,22 @@ export function DashboardPage() {
   };
 
   const selectAllAccounts = () => {
-    const names = accounts.map(getAccountName).filter(Boolean);
-    setSelectedNames((current) => (current.length === names.length ? [] : names));
+    if (filteredAccountNames.length === 0) return;
+    setSelectedNames((current) => {
+      const visible = new Set(filteredAccountNames);
+      const allVisibleSelected = filteredAccountNames.every((name) => current.includes(name));
+      if (allVisibleSelected) {
+        return current.filter((name) => !visible.has(name));
+      }
+      return Array.from(new Set([...current, ...filteredAccountNames]));
+    });
+  };
+
+  const clearAccountFilters = () => {
+    setAccountSearch('');
+    setAccountStateFilter('all');
+    setAccountProxyFilter('all');
+    setAccountAuthFilter('all');
   };
 
   const openBatchEditor = () => {
@@ -2207,8 +2355,8 @@ export function DashboardPage() {
               label="来源页面 URL"
               value={sessionImportSourceUrl}
               onChange={(event) => setSessionImportSourceUrl(event.target.value)}
-              placeholder="https://sessionkeytest.globalpays.shop/accounts"
-              hint="生产默认只允许白名单来源，避免服务端请求伪造风险。"
+              placeholder="留空使用服务端默认抓取来源"
+              hint="默认来源仅在服务端保存；需要临时覆盖时，只能填写后端允许的白名单来源。"
             />
             <div className={styles.sessionImportGrid}>
               <Input
@@ -2328,14 +2476,52 @@ export function DashboardPage() {
           </span>
         </div>
 
+        <div className={styles.accountFilters}>
+          <Input
+            label="搜索账号"
+            value={accountSearch}
+            onChange={(event) => setAccountSearch(event.target.value)}
+            placeholder="邮箱、文件名、代理、错误信息"
+          />
+          <div className={styles.filterField}>
+            <span>状态</span>
+            <Select
+              value={accountStateFilter}
+              options={ACCOUNT_STATE_FILTER_OPTIONS}
+              onChange={(value) => setAccountStateFilter(value as AccountStateFilter)}
+            />
+          </div>
+          <div className={styles.filterField}>
+            <span>代理</span>
+            <Select
+              value={accountProxyFilter}
+              options={ACCOUNT_PROXY_FILTER_OPTIONS}
+              onChange={(value) => setAccountProxyFilter(value as AccountProxyFilter)}
+            />
+          </div>
+          <div className={styles.filterField}>
+            <span>认证方式</span>
+            <Select
+              value={accountAuthFilter}
+              options={ACCOUNT_AUTH_FILTER_OPTIONS}
+              onChange={(value) => setAccountAuthFilter(value as AccountAuthFilter)}
+            />
+          </div>
+          <Button variant="ghost" size="sm" onClick={clearAccountFilters} disabled={!hasAccountFilters}>
+            重置筛选
+          </Button>
+        </div>
+
         <div className={styles.accountToolbar}>
           <div>
             <strong>已选 {selectedNames.length}</strong>
-            <span>批量修改会逐个账号保存，失败账号不会影响其他账号。</span>
+            <span>
+              当前显示 {filteredAccounts.length}/{accounts.length}；批量修改会逐个账号保存，失败账号不会影响其他账号。
+            </span>
           </div>
           <div>
-            <Button variant="ghost" size="sm" onClick={selectAllAccounts} disabled={accounts.length === 0}>
-              {selectedNames.length === accounts.length && accounts.length > 0 ? '取消全选' : '全选'}
+            <Button variant="ghost" size="sm" onClick={selectAllAccounts} disabled={filteredAccountNames.length === 0}>
+              {allFilteredAccountsSelected ? '取消筛选选择' : '选择筛选结果'}
             </Button>
             <Button
               variant="secondary"
@@ -2369,9 +2555,11 @@ export function DashboardPage() {
           <div className={styles.emptyState}>正在加载 Claude 账号池...</div>
         ) : accounts.length === 0 ? (
           <div className={styles.emptyState}>还没有 Claude 账号。先用 OAuth 或 Cookie 换授权导入一个账号。</div>
+        ) : filteredAccounts.length === 0 ? (
+          <div className={styles.emptyState}>没有符合当前筛选条件的 Claude 账号。</div>
         ) : (
           <div className={styles.accountGrid}>
-            {accounts.map((account) => {
+            {filteredAccounts.map((account) => {
               const record = account as Record<string, unknown>;
               const name = String(account.name ?? '').trim();
               const quotaDetail = name ? quotaByAccount[name] : undefined;
