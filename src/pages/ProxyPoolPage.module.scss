@@ -1,0 +1,172 @@
+@use '../styles/mixins' as *;
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xl;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: $spacing-md;
+  align-items: flex-start;
+
+  h1 {
+    margin: 0 0 $spacing-xs;
+    color: var(--text-primary);
+    font-size: 28px;
+  }
+
+  p {
+    margin: 0;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  @include mobile {
+    flex-direction: column;
+  }
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: $spacing-md;
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
+}
+
+.statCard {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: $spacing-md;
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  span {
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 28px;
+  }
+}
+
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: $spacing-lg;
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
+}
+
+.formStack {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.formActions,
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  align-items: center;
+}
+
+.textareaField {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 13px;
+
+  textarea {
+    min-height: 132px;
+    resize: vertical;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    padding: 11px 12px;
+    line-height: 1.5;
+    font: inherit;
+  }
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.proxyTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+
+  th,
+  td {
+    text-align: left;
+    padding: 14px 12px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    vertical-align: top;
+  }
+
+  th {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 800;
+  }
+
+  td small {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+}
+
+.proxyUrl {
+  max-width: 340px;
+  word-break: break-all;
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.enabledBadge,
+.disabledBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.enabledBadge {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.disabledBadge {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.emptyCell {
+  text-align: center !important;
+  color: var(--text-secondary) !important;
+  padding: $spacing-xl !important;
+}

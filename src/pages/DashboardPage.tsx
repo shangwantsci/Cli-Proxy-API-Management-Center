@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { parseDocument } from 'yaml';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { ProxyPicker } from '@/components/proxy/ProxyPicker';
 import { Select } from '@/components/ui/Select';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import {
@@ -22,11 +23,13 @@ import {
   claudeMimicryApi,
   configFileApi,
   getApiCallErrorMessage,
+  proxyPoolApi,
   type ApiCallResult,
   type ClaudeMimicryAuditResponse,
   type ClaudeMimicryEventsResponse,
   type ClaudeMimicryEvent,
   type ClaudeMimicryStatus,
+  type ProxyPoolEntry,
 } from '@/services/api';
 import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api/authFiles';
 import { oauthApi } from '@/services/api/oauth';
@@ -969,6 +972,7 @@ export function DashboardPage() {
   const [importing, setImporting] = useState(false);
   const [sessionKey, setSessionKey] = useState('');
   const [importProxyUrl, setImportProxyUrl] = useState('');
+  const [proxyPool, setProxyPool] = useState<ProxyPoolEntry[]>([]);
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [adminPasswordDraft, setAdminPasswordDraft] = useState('');
   const [savingAccessSettings, setSavingAccessSettings] = useState(false);
@@ -1030,6 +1034,19 @@ export function DashboardPage() {
     }
   }, [connectionStatus, fetchConfig, showNotification]);
 
+  const loadProxyPool = useCallback(async () => {
+    if (connectionStatus !== 'connected') {
+      setProxyPool([]);
+      return;
+    }
+    try {
+      setProxyPool(await proxyPoolApi.list());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '代理池加载失败';
+      showNotification(message, 'error');
+    }
+  }, [connectionStatus, showNotification]);
+
   const loadMimicryAudit = useCallback(async () => {
     if (connectionStatus !== 'connected') {
       setMimicryAudit(null);
@@ -1066,6 +1083,10 @@ export function DashboardPage() {
   useEffect(() => {
     loadAccounts();
   }, [loadAccounts]);
+
+  useEffect(() => {
+    loadProxyPool();
+  }, [loadProxyPool]);
 
   useEffect(() => {
     loadMimicryAudit();
@@ -1327,6 +1348,7 @@ export function DashboardPage() {
       setSessionKey('');
       showNotification(`账号导入成功：${result.email || result.auth_file || 'Claude'}`, 'success');
       await loadAccounts();
+      await loadProxyPool();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Cookie 换授权失败';
       showNotification(message, 'error');
@@ -1477,6 +1499,7 @@ export function DashboardPage() {
     }
     try {
       await loadAccounts();
+      await loadProxyPool();
     } finally {
       setSavingBatch(false);
     }
@@ -1652,6 +1675,7 @@ export function DashboardPage() {
       showNotification('账号策略已保存', 'success');
       closeEditor();
       await loadAccounts();
+      await loadProxyPool();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '账号策略保存失败';
       showNotification(message, 'error');
@@ -2044,10 +2068,11 @@ export function DashboardPage() {
             onChange={(event) => setSessionKey(event.target.value)}
             placeholder="粘贴 claude.ai Cookie 中的 sessionKey"
           />
-          <Input
+          <ProxyPicker
             label="该账号专属代理"
             value={importProxyUrl}
-            onChange={(event) => setImportProxyUrl(event.target.value)}
+            proxies={proxyPool}
+            onChange={setImportProxyUrl}
             placeholder="socks5://user:pass@host:port 或 direct，可留空"
             hint="支持 http://、https://、socks5://、socks5h://；留空使用全局代理，direct/none 强制该账号直连。"
           />
@@ -2455,11 +2480,12 @@ export function DashboardPage() {
                   onChange={(applyProxy) => setBatchForm({ ...batchForm, applyProxy })}
                   label="更新专属代理"
                 />
-                <Input
+                <ProxyPicker
                   label="专属代理"
                   value={batchForm.proxyUrl}
                   disabled={!batchForm.applyProxy}
-                  onChange={(event) => setBatchForm({ ...batchForm, proxyUrl: event.target.value })}
+                  proxies={proxyPool}
+                  onChange={(proxyUrl) => setBatchForm({ ...batchForm, proxyUrl })}
                   placeholder="留空表示回到全局代理，direct/none 表示直连"
                 />
               </section>
@@ -2507,10 +2533,11 @@ export function DashboardPage() {
             </div>
 
             <div className={styles.formGrid}>
-              <Input
+              <ProxyPicker
                 label="专属代理"
                 value={editForm.proxyUrl}
-                onChange={(event) => setEditForm({ ...editForm, proxyUrl: event.target.value })}
+                proxies={proxyPool}
+                onChange={(proxyUrl) => setEditForm({ ...editForm, proxyUrl })}
                 placeholder="socks5://user:pass@host:port 或 direct"
                 hint="支持 http://、https://、socks5://、socks5h://；留空使用全局代理，direct/none 强制该账号直连。"
               />

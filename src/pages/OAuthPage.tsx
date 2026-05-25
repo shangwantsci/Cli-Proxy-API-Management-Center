@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { ProxyPicker } from '@/components/proxy/ProxyPicker';
 import { extractOAuthCallbackState, oauthApi } from '@/services/api/oauth';
+import { proxyPoolApi, type ProxyPoolEntry } from '@/services/api/proxyPool';
 import { useNotificationStore } from '@/stores';
 import { copyToClipboard } from '@/utils/clipboard';
 import styles from './OAuthPage.module.scss';
@@ -47,8 +49,17 @@ export function OAuthPage() {
   const [callbackSubmitting, setCallbackSubmitting] = useState(false);
   const [sessionKey, setSessionKey] = useState('');
   const [proxyUrl, setProxyUrl] = useState('');
+  const [proxyPool, setProxyPool] = useState<ProxyPoolEntry[]>([]);
   const [cookieSubmitting, setCookieSubmitting] = useState(false);
   const [cookieResult, setCookieResult] = useState('');
+
+  const loadProxyPool = useCallback(async () => {
+    try {
+      setProxyPool(await proxyPoolApi.list());
+    } catch {
+      setProxyPool([]);
+    }
+  }, []);
 
   const clearPollTimer = useCallback(() => {
     if (pollTimer.current !== null) {
@@ -56,6 +67,10 @@ export function OAuthPage() {
       pollTimer.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    loadProxyPool();
+  }, [loadProxyPool]);
 
   useEffect(() => {
     return () => {
@@ -91,6 +106,7 @@ export function OAuthPage() {
           const result = await oauthApi.getAuthStatus(state);
           if (result.status === 'ok') {
             markSuccess(`Claude OAuth 授权完成：${authMethodText(result.auth_source, result.auth_method_label)}`);
+            void loadProxyPool();
           } else if (result.status === 'error') {
             clearPollTimer();
             setStatus('error');
@@ -103,7 +119,7 @@ export function OAuthPage() {
         }
       }, 2000);
     },
-    [clearPollTimer, markSuccess]
+    [clearPollTimer, loadProxyPool, markSuccess]
   );
 
   const startOAuth = async () => {
@@ -174,6 +190,7 @@ export function OAuthPage() {
       setCookieResult(`已导入 ${label}，认证方式：${method}`);
       setSessionKey('');
       markSuccess(`Cookie 换授权完成：${method}`);
+      void loadProxyPool();
     } catch (error) {
       showNotification(`Cookie 换授权失败：${errorMessage(error)}`, 'error');
     } finally {
@@ -210,10 +227,11 @@ export function OAuthPage() {
               默认模拟 Claude Code CLI 登录。授权后浏览器跳到 localhost 属于正常现象，复制地址栏完整回调
               URL 提交即可；后端会保存刷新令牌用于长期续期。
             </p>
-            <Input
+            <ProxyPicker
               label="该账号专属代理"
               value={proxyUrl}
-              onChange={(event) => setProxyUrl(event.target.value)}
+              proxies={proxyPool}
+              onChange={setProxyUrl}
               placeholder="socks5://user:pass@host:port 或 direct，可留空"
               hint="OAuth 换 token、后续额度查询和账号请求都会优先使用这个代理。支持 http://、https://、socks5://、socks5h://。"
             />
@@ -284,10 +302,11 @@ export function OAuthPage() {
                 onChange={(event) => setSessionKey(event.target.value)}
                 placeholder="粘贴 claude.ai Cookie 中的 sessionKey"
               />
-              <Input
+              <ProxyPicker
                 label="该账号专属代理"
                 value={proxyUrl}
-                onChange={(event) => setProxyUrl(event.target.value)}
+                proxies={proxyPool}
+                onChange={setProxyUrl}
                 placeholder="socks5://user:pass@host:port 或 direct，可留空"
                 hint="与上方 OAuth 代理共用；支持 http://、https://、socks5://、socks5h://；留空使用全局代理，direct/none 强制该账号直连。"
               />

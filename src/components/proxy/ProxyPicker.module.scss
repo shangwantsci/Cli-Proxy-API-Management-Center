@@ -1,0 +1,17 @@
+.proxyPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.selectField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+}

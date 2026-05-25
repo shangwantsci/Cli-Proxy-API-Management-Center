@@ -380,6 +380,7 @@ export function MainLayout() {
   const navItems = [
     { path: '/', label: t('nav.claude_accounts', { defaultValue: '账号池' }), icon: sidebarIcons.dashboard },
     { path: '/oauth', label: t('nav.claude_import', { defaultValue: '导入账号' }), icon: sidebarIcons.oauth },
+    { path: '/proxies', label: t('nav.proxy_pool', { defaultValue: '代理池' }), icon: sidebarIcons.config },
     { path: '/config', label: t('nav.claude_strategy', { defaultValue: '策略设置' }), icon: sidebarIcons.config },
     ...(config?.loggingToFile
       ? [{ path: '/logs', label: t('nav.logs'), icon: sidebarIcons.logs }]

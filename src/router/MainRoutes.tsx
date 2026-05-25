@@ -1,6 +1,7 @@
 import { Navigate, useRoutes, type Location } from 'react-router-dom';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { OAuthPage } from '@/pages/OAuthPage';
+import { ProxyPoolPage } from '@/pages/ProxyPoolPage';
 import { ConfigPage } from '@/pages/ConfigPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { SystemPage } from '@/pages/SystemPage';
@@ -13,6 +14,7 @@ const mainRoutes = [
   { path: '/ai-providers/*', element: <Navigate to="/" replace /> },
   { path: '/auth-files/*', element: <Navigate to="/" replace /> },
   { path: '/oauth', element: <OAuthPage /> },
+  { path: '/proxies', element: <ProxyPoolPage /> },
   { path: '/quota', element: <Navigate to="/" replace /> },
   { path: '/config', element: <ConfigPage /> },
   { path: '/logs', element: <LogsPage /> },
