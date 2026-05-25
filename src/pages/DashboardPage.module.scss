@@ -239,6 +239,159 @@
   }
 }
 
+.sessionImportBox {
+  display: grid;
+  gap: $spacing-md;
+  margin-top: $spacing-lg;
+  padding-top: $spacing-lg;
+  border-top: 1px solid var(--border-color);
+}
+
+.sessionImportHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-sm;
+
+  strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: 14px;
+  }
+
+  span {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  em {
+    flex: 0 0 auto;
+    padding: 5px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: $radius-sm;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 800;
+  }
+}
+
+.sessionImportrunning {
+  color: var(--primary-color) !important;
+  border-color: color-mix(in srgb, var(--primary-color) 42%, var(--border-color)) !important;
+}
+
+.sessionImportcompleted {
+  color: $success-color !important;
+  border-color: rgba($success-color, 0.45) !important;
+}
+
+.sessionImportfailed,
+.sessionImportcanceled {
+  color: $error-color !important;
+  border-color: rgba($error-color, 0.42) !important;
+}
+
+.sessionImportGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-sm;
+
+  @media (max-width: 680px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sessionImportActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.sessionImportStatus {
+  display: grid;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
+}
+
+.sessionImportProgress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-primary);
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--primary-color);
+    transition: width 0.2s ease;
+  }
+}
+
+.sessionImportStats,
+.sessionImportReasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  span {
+    padding: 4px 7px;
+    border-radius: $radius-sm;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    font-size: 12px;
+    font-weight: 700;
+  }
+}
+
+.sessionImportError {
+  padding: 8px 10px;
+  border-radius: $radius-sm;
+  color: $error-color;
+  background: rgba($error-color, 0.1);
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.sessionImportResults {
+  display: grid;
+  gap: 6px;
+
+  div {
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px;
+    border-radius: $radius-sm;
+    background: var(--bg-primary);
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 12px;
+  }
+
+  span,
+  small {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  small {
+    color: var(--text-tertiary);
+  }
+}
+
 .opsGrid,
 .mimicryGrid {
   display: grid;

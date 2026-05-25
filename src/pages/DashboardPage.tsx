@@ -21,6 +21,7 @@ import {
   apiCallApi,
   apiKeysApi,
   claudeMimicryApi,
+  claudeSessionImportApi,
   configFileApi,
   getApiCallErrorMessage,
   proxyPoolApi,
@@ -29,6 +30,7 @@ import {
   type ClaudeMimicryEventsResponse,
   type ClaudeMimicryEvent,
   type ClaudeMimicryStatus,
+  type ClaudeSessionImportJob,
   type ProxyPoolEntry,
 } from '@/services/api';
 import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api/authFiles';
@@ -117,6 +119,26 @@ const CLOAK_MODE_OPTIONS = [
   { value: 'auto', label: '自动伪装：真实 Claude Code 不重写' },
   { value: 'never', label: '关闭伪装' },
 ];
+
+const parsePositiveInteger = (value: string, fallback: number): number => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const sessionImportStatusLabel = (status?: string): string => {
+  switch (status) {
+    case 'running':
+      return '运行中';
+    case 'completed':
+      return '已完成';
+    case 'failed':
+      return '失败';
+    case 'canceled':
+      return '已取消';
+    default:
+      return '未开始';
+  }
+};
 
 const DEFAULT_BATCH_FORM: BatchEditForm = {
   applyProxy: false,
@@ -468,7 +490,7 @@ function accountStateLabel(state: AccountState): string {
     case 'rpmCooling':
       return 'RPM 冷却';
     case 'sessionFull':
-      return '会话满';
+      return '新会话已满';
     case 'authExpired':
       return '认证过期';
     case 'subscriptionIssue':
@@ -505,7 +527,7 @@ function accountStateDetail(account: AuthFileItem): string {
     return `RPM 达到 ${runtime.currentRpm}/${runtime.rpmLimit}，恢复 ${formatDate(runtime.rpmResetAt)}`;
   }
   if (statusReason === 'session_full') {
-    return `会话达到 ${runtime.activeSessions}/${runtime.maxSessions}，释放 ${formatDate(runtime.sessionResetAt)}`;
+    return `已有会话可继续，无会话 ID 请求不受影响，新会话释放 ${formatDate(runtime.sessionResetAt)}`;
   }
   if (statusReason === 'subscription_issue') {
     return statusReasonLabel || '订阅、退款或账单状态异常';
@@ -972,6 +994,16 @@ export function DashboardPage() {
   const [importing, setImporting] = useState(false);
   const [sessionKey, setSessionKey] = useState('');
   const [importProxyUrl, setImportProxyUrl] = useState('');
+  const [sessionImportSourceUrl, setSessionImportSourceUrl] = useState(
+    'https://sessionkeytest.globalpays.shop/accounts'
+  );
+  const [sessionImportApiPath, setSessionImportApiPath] = useState('/api/accounts');
+  const [sessionImportConcurrency, setSessionImportConcurrency] = useState('10');
+  const [sessionImportDelayMin, setSessionImportDelayMin] = useState('200');
+  const [sessionImportDelayMax, setSessionImportDelayMax] = useState('800');
+  const [sessionImportJob, setSessionImportJob] = useState<ClaudeSessionImportJob | null>(null);
+  const [startingSessionImport, setStartingSessionImport] = useState(false);
+  const [cancelingSessionImport, setCancelingSessionImport] = useState(false);
   const [proxyPool, setProxyPool] = useState<ProxyPoolEntry[]>([]);
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [adminPasswordDraft, setAdminPasswordDraft] = useState('');
@@ -1357,6 +1389,75 @@ export function DashboardPage() {
     }
   };
 
+  const refreshSessionImportJob = useCallback(async (jobId: string) => {
+    const job = await claudeSessionImportApi.get(jobId);
+    setSessionImportJob(job);
+    if (job.status === 'completed') {
+      await loadAccounts();
+      await loadProxyPool();
+    }
+    return job;
+  }, [loadAccounts, loadProxyPool]);
+
+  useEffect(() => {
+    if (!sessionImportJob || sessionImportJob.status !== 'running') return undefined;
+    let disposed = false;
+    const timer = window.setInterval(() => {
+      void claudeSessionImportApi
+        .get(sessionImportJob.id)
+        .then((job) => {
+          if (disposed) return;
+          setSessionImportJob(job);
+          if (job.status === 'completed') {
+            void loadAccounts();
+            void loadProxyPool();
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [loadAccounts, loadProxyPool, sessionImportJob]);
+
+  const handleStartSessionImport = async () => {
+    setStartingSessionImport(true);
+    try {
+      const response = await claudeSessionImportApi.start({
+        sourceUrl: sessionImportSourceUrl.trim() || undefined,
+        apiPath: sessionImportApiPath.trim() || undefined,
+        proxyUrl: importProxyUrl.trim() || undefined,
+        concurrency: parsePositiveInteger(sessionImportConcurrency, 10),
+        delayMinMs: parsePositiveInteger(sessionImportDelayMin, 200),
+        delayMaxMs: parsePositiveInteger(sessionImportDelayMax, 800),
+      });
+      setSessionImportJob(response.job);
+      showNotification('批量导入任务已启动', 'success');
+      void refreshSessionImportJob(response.job_id);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '批量导入任务启动失败';
+      showNotification(message, 'error');
+    } finally {
+      setStartingSessionImport(false);
+    }
+  };
+
+  const handleCancelSessionImport = async () => {
+    if (!sessionImportJob) return;
+    setCancelingSessionImport(true);
+    try {
+      const job = await claudeSessionImportApi.cancel(sessionImportJob.id);
+      setSessionImportJob(job);
+      showNotification('批量导入任务已取消', 'success');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '取消任务失败';
+      showNotification(message, 'error');
+    } finally {
+      setCancelingSessionImport(false);
+    }
+  };
+
   const handleGenerateApiKey = () => {
     const nextKey = makeClientApiKey();
     setApiKeyDraft((current) => {
@@ -1684,6 +1785,16 @@ export function DashboardPage() {
     }
   };
 
+  const sessionImportRunning = sessionImportJob?.status === 'running';
+  const sessionImportProgress =
+    sessionImportJob && sessionImportJob.total_fetched > 0
+      ? Math.round((sessionImportJob.total_processed / sessionImportJob.total_fetched) * 100)
+      : 0;
+  const sessionImportFailures = Object.entries(sessionImportJob?.failure_reasons ?? {})
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 6);
+  const recentSessionImportResults = (sessionImportJob?.results ?? []).slice(-6).reverse();
+
   return (
     <div className={styles.dashboard}>
       <section className={styles.hero}>
@@ -1759,7 +1870,7 @@ export function DashboardPage() {
               <strong>可用 {operationsOverview.stateCounts.active}</strong>
               <strong>限额 {operationsOverview.stateCounts.quotaCooling}</strong>
               <strong>RPM {operationsOverview.stateCounts.rpmCooling}</strong>
-              <strong>会话满 {operationsOverview.stateCounts.sessionFull}</strong>
+              <strong>新会话已满 {operationsOverview.stateCounts.sessionFull}</strong>
               <strong>认证异常 {operationsOverview.stateCounts.authExpired}</strong>
               <strong>停用 {operationsOverview.stateCounts.disabled}</strong>
             </div>
@@ -2079,6 +2190,112 @@ export function DashboardPage() {
           <Button onClick={handleCookieImport} loading={importing} fullWidth>
             Cookie 换授权并加入账号池
           </Button>
+
+          <div className={styles.sessionImportBox}>
+            <div className={styles.sessionImportHeader}>
+              <div>
+                <strong>批量抓取验证并导入</strong>
+                <span>抓取来源中的 sessionKey，验证有效后按现有 Cookie 换授权流程加入账号池。</span>
+              </div>
+              {sessionImportJob && (
+                <em className={styles[`sessionImport${sessionImportJob.status}`]}>
+                  {sessionImportStatusLabel(sessionImportJob.status)}
+                </em>
+              )}
+            </div>
+            <Input
+              label="来源页面 URL"
+              value={sessionImportSourceUrl}
+              onChange={(event) => setSessionImportSourceUrl(event.target.value)}
+              placeholder="https://sessionkeytest.globalpays.shop/accounts"
+              hint="生产默认只允许白名单来源，避免服务端请求伪造风险。"
+            />
+            <div className={styles.sessionImportGrid}>
+              <Input
+                label="API Path"
+                value={sessionImportApiPath}
+                onChange={(event) => setSessionImportApiPath(event.target.value)}
+                placeholder="/api/accounts"
+              />
+              <Input
+                label="并发"
+                type="number"
+                min={1}
+                max={20}
+                value={sessionImportConcurrency}
+                onChange={(event) => setSessionImportConcurrency(event.target.value)}
+              />
+              <Input
+                label="最小延迟 ms"
+                type="number"
+                min={0}
+                value={sessionImportDelayMin}
+                onChange={(event) => setSessionImportDelayMin(event.target.value)}
+              />
+              <Input
+                label="最大延迟 ms"
+                type="number"
+                min={0}
+                value={sessionImportDelayMax}
+                onChange={(event) => setSessionImportDelayMax(event.target.value)}
+              />
+            </div>
+            <div className={styles.sessionImportActions}>
+              <Button
+                onClick={handleStartSessionImport}
+                loading={startingSessionImport}
+                disabled={sessionImportRunning}
+                fullWidth
+              >
+                一键验证并导入有效账号
+              </Button>
+              {sessionImportRunning && (
+                <Button
+                  variant="secondary"
+                  onClick={handleCancelSessionImport}
+                  loading={cancelingSessionImport}
+                >
+                  取消
+                </Button>
+              )}
+            </div>
+
+            {sessionImportJob && (
+              <div className={styles.sessionImportStatus}>
+                <div className={styles.sessionImportProgress}>
+                  <span style={{ width: `${Math.min(100, Math.max(0, sessionImportProgress))}%` }} />
+                </div>
+                <div className={styles.sessionImportStats}>
+                  <span>抓取 {sessionImportJob.total_fetched}</span>
+                  <span>处理 {sessionImportJob.total_processed}</span>
+                  <span>导入 {sessionImportJob.imported}</span>
+                  <span>失败 {sessionImportJob.failed}</span>
+                  <span>重复 {sessionImportJob.duplicate}</span>
+                </div>
+                {sessionImportJob.error && <div className={styles.sessionImportError}>{sessionImportJob.error}</div>}
+                {sessionImportFailures.length > 0 && (
+                  <div className={styles.sessionImportReasons}>
+                    {sessionImportFailures.map(([reason, count]) => (
+                      <span key={reason}>
+                        {reason} · {count}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {recentSessionImportResults.length > 0 && (
+                  <div className={styles.sessionImportResults}>
+                    {recentSessionImportResults.map((result) => (
+                      <div key={`${result.session_key_hash}-${result.status}-${result.auth_file || result.reason}`}>
+                        <strong>{result.status === 'imported' ? '已导入' : '失败'}</strong>
+                        <span>{result.email || result.reason || result.auth_file || result.session_key_hash}</span>
+                        {result.auth_method_label && <small>{result.auth_method_label}</small>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className={styles.strategyPanel}>
@@ -2568,7 +2785,7 @@ export function DashboardPage() {
                 value={editForm.maxSessions}
                 onChange={(event) => setEditForm({ ...editForm, maxSessions: event.target.value })}
                 placeholder="5"
-                hint="同一时间可绑定的下游会话数，0 表示不限制；同一会话不会被重复计数。"
+                hint="同一时间可绑定的真实下游会话数，0 表示不限制；无会话 ID 请求只做 5 分钟软粘滞，不占用会话槽。"
               />
               <div className={styles.selectField}>
                 <label>伪装模式</label>
