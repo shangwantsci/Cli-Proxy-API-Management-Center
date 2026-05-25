@@ -140,9 +140,12 @@ function setIntFromStringInDoc(doc: YamlDocument, path: YamlPath, value: unknown
 }
 
 function parseClaudeMimicryGuardMode(raw: unknown): VisualConfigValues['claudeMimicryGuardMode'] {
-  const normalized = String(raw ?? '').trim().toLowerCase();
+  const normalized = String(raw ?? '')
+    .trim()
+    .toLowerCase();
   if (normalized === 'strict') return 'strict';
-  if (normalized === 'observe' || normalized === 'off' || normalized === 'disabled') return 'observe';
+  if (normalized === 'observe' || normalized === 'off' || normalized === 'disabled')
+    return 'observe';
   return 'degrade';
 }
 
@@ -184,9 +187,7 @@ export function getVisualConfigValidationErrors(
 ): VisualConfigValidationErrors {
   return {
     requestRetry: getNonNegativeIntegerError(values.requestRetry),
-    claudeMimicryGuardEventsLimit: getNonNegativeIntegerError(
-      values.claudeMimicryGuardEventsLimit
-    ),
+    claudeMimicryGuardEventsLimit: getNonNegativeIntegerError(values.claudeMimicryGuardEventsLimit),
     maxRetryCredentials: getNonNegativeIntegerError(values.maxRetryCredentials),
     maxRetryInterval: getNonNegativeIntegerError(values.maxRetryInterval),
     claudeQuotaFiveHourRemainingPercent: getPercentIntegerError(
@@ -403,6 +404,17 @@ function parseDisableImageGenerationMode(raw: unknown): DisableImageGenerationMo
     if (normalized === 'chat') return 'chat';
   }
   return 'false';
+}
+
+function parseBooleanDefault(raw: unknown, fallback: boolean): boolean {
+  if (typeof raw === 'boolean') return raw;
+  if (typeof raw === 'number') return raw !== 0;
+  if (typeof raw === 'string') {
+    const normalized = raw.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
+  }
+  return fallback;
 }
 
 function parsePayloadHeaders(raw: unknown, idPrefix: string): PayloadHeaderEntry[] {
@@ -704,7 +716,18 @@ function applyClaudeStrategyVisualChangesToDoc(
   setStringInDoc(doc, ['proxy-url'], values.proxyUrl);
   setBooleanInDoc(doc, ['force-model-prefix'], values.forceModelPrefix);
   setBooleanInDoc(doc, ['passthrough-headers'], values.passthroughHeaders);
-  setManagedIntFromStringInDoc(doc, ['request-retry'], values.requestRetry, dirtyFields, 'requestRetry');
+  setManagedIntFromStringInDoc(
+    doc,
+    ['request-retry'],
+    values.requestRetry,
+    dirtyFields,
+    'requestRetry'
+  );
+  if (docHas(doc, ['claude-billable-usage']) || dirtyFields.has('claudeBillableUsageEnabled')) {
+    ensureMapInDoc(doc, ['claude-billable-usage']);
+    doc.setIn(['claude-billable-usage', 'enabled'], values.claudeBillableUsageEnabled);
+    deleteIfMapEmpty(doc, ['claude-billable-usage']);
+  }
   if (
     docHas(doc, ['claude-mimicry-guard']) ||
     dirtyFields.has('claudeMimicryGuardMode') ||
@@ -815,13 +838,9 @@ function applyClaudeStrategyVisualChangesToDoc(
   }
 
   const keepaliveSeconds =
-    typeof values.streaming?.keepaliveSeconds === 'string'
-      ? values.streaming.keepaliveSeconds
-      : '';
+    typeof values.streaming?.keepaliveSeconds === 'string' ? values.streaming.keepaliveSeconds : '';
   const bootstrapRetries =
-    typeof values.streaming?.bootstrapRetries === 'string'
-      ? values.streaming.bootstrapRetries
-      : '';
+    typeof values.streaming?.bootstrapRetries === 'string' ? values.streaming.bootstrapRetries : '';
   const nonstreamKeepaliveInterval =
     typeof values.streaming?.nonstreamKeepaliveInterval === 'string'
       ? values.streaming.nonstreamKeepaliveInterval
@@ -924,6 +943,7 @@ function getNextDirtyFields(
       'usageStatisticsEnabled',
       'redisUsageQueueRetentionSeconds',
       'passthroughHeaders',
+      'claudeBillableUsageEnabled',
       'claudeMimicryGuardMode',
       'claudeMimicryGuardEventsLimit',
       'disableCooling',
@@ -1207,6 +1227,7 @@ export function useVisualConfig() {
       const payload = asRecord(parsed.payload);
       const streaming = asRecord(parsed.streaming);
       const claudeQuotaCoolingThresholds = asRecord(parsed['claude-quota-cooling-thresholds']);
+      const claudeBillableUsage = asRecord(parsed['claude-billable-usage']);
       const claudeHeaderDefaults = asRecord(parsed['claude-header-defaults']);
       const claudeMimicryGuard = asRecord(parsed['claude-mimicry-guard']);
       const codexHeaderDefaults = asRecord(parsed['codex-header-defaults']);
@@ -1250,6 +1271,10 @@ export function useVisualConfig() {
         forceModelPrefix: Boolean(parsed['force-model-prefix']),
         passthroughHeaders: Boolean(parsed['passthrough-headers']),
         requestRetry: String(parsed['request-retry'] ?? DEFAULT_VISUAL_VALUES.requestRetry),
+        claudeBillableUsageEnabled: parseBooleanDefault(
+          claudeBillableUsage?.enabled,
+          DEFAULT_VISUAL_VALUES.claudeBillableUsageEnabled
+        ),
         claudeMimicryGuardMode: parseClaudeMimicryGuardMode(claudeMimicryGuard?.mode),
         claudeMimicryGuardEventsLimit: String(
           claudeMimicryGuard?.['events-limit'] ??
@@ -1317,9 +1342,9 @@ export function useVisualConfig() {
         routingStrategy: routing?.strategy === 'fill-first' ? 'fill-first' : 'round-robin',
         routingSessionAffinity: Boolean(
           routing?.['session-affinity'] ??
-            routing?.sessionAffinity ??
-            routing?.['sessionAffinity'] ??
-            DEFAULT_VISUAL_VALUES.routingSessionAffinity
+          routing?.sessionAffinity ??
+          routing?.['sessionAffinity'] ??
+          DEFAULT_VISUAL_VALUES.routingSessionAffinity
         ),
         routingSessionAffinityTTL:
           typeof routing?.['session-affinity-ttl'] === 'string'
@@ -1440,6 +1465,14 @@ export function useVisualConfig() {
         setBooleanInDoc(doc, ['force-model-prefix'], values.forceModelPrefix);
         setBooleanInDoc(doc, ['passthrough-headers'], values.passthroughHeaders);
         setIntFromStringInDoc(doc, ['request-retry'], values.requestRetry);
+        if (
+          docHas(doc, ['claude-billable-usage']) ||
+          dirtyFields.has('claudeBillableUsageEnabled')
+        ) {
+          ensureMapInDoc(doc, ['claude-billable-usage']);
+          doc.setIn(['claude-billable-usage', 'enabled'], values.claudeBillableUsageEnabled);
+          deleteIfMapEmpty(doc, ['claude-billable-usage']);
+        }
         if (
           docHas(doc, ['claude-mimicry-guard']) ||
           dirtyFields.has('claudeMimicryGuardMode') ||

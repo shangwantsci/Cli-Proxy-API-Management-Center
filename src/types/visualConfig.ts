@@ -97,6 +97,7 @@ export type VisualConfigValues = {
   forceModelPrefix: boolean;
   passthroughHeaders: boolean;
   requestRetry: string;
+  claudeBillableUsageEnabled: boolean;
   claudeMimicryGuardMode: 'degrade' | 'strict' | 'observe';
   claudeMimicryGuardEventsLimit: string;
   maxRetryCredentials: string;
@@ -162,6 +163,7 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   forceModelPrefix: false,
   passthroughHeaders: false,
   requestRetry: '2',
+  claudeBillableUsageEnabled: true,
   claudeMimicryGuardMode: 'degrade',
   claudeMimicryGuardEventsLimit: '500',
   maxRetryCredentials: '0',

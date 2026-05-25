@@ -283,8 +283,7 @@ export function VisualConfigEditor({
 
   const activeSection = sections.find((section) => section.id === activeSectionId) ?? sections[0];
   const hasValidationIssues = sections.some((section) => section.errorCount > 0);
-  const routingStrategyLabel =
-    values.routingStrategy === 'fill-first' ? '填满优先' : '轮询均衡';
+  const routingStrategyLabel = values.routingStrategy === 'fill-first' ? '填满优先' : '轮询均衡';
   const coolingEnabled = !values.disableCooling;
   const stableFingerprintEnabled = values.claudeHeaderStabilizeDeviceProfile;
   const affinityEnabled = values.routingSessionAffinity;
@@ -418,13 +417,21 @@ export function VisualConfigEditor({
             tone={affinityEnabled ? 'good' : 'neutral'}
           />
           <StrategyMetric label="换号" value={routingStrategyLabel} />
-          <StrategyMetric label="重试账号" value={retryCredentialText(values.maxRetryCredentials)} />
+          <StrategyMetric
+            label="重试账号"
+            value={retryCredentialText(values.maxRetryCredentials)}
+          />
           <StrategyMetric
             label="限额保护"
             value={quotaThresholdText(
               values.claudeQuotaFiveHourRemainingPercent,
               values.claudeQuotaWeeklyRemainingPercent
             )}
+          />
+          <StrategyMetric
+            label="计费口径"
+            value={values.claudeBillableUsageEnabled ? '扣除伪装注入' : '上游原始'}
+            tone={values.claudeBillableUsageEnabled ? 'good' : 'warn'}
           />
         </div>
       </div>
@@ -497,7 +504,12 @@ export function VisualConfigEditor({
               <StatusList
                 items={[
                   { label: 'Claude CLI User-Agent', active: Boolean(values.claudeHeaderUserAgent) },
-                  { label: 'Package/Runtime 指纹', active: Boolean(values.claudeHeaderPackageVersion || values.claudeHeaderRuntimeVersion) },
+                  {
+                    label: 'Package/Runtime 指纹',
+                    active: Boolean(
+                      values.claudeHeaderPackageVersion || values.claudeHeaderRuntimeVersion
+                    ),
+                  },
                   { label: '设备指纹稳定', active: stableFingerprintEnabled },
                   { label: '账号级 user_id 缓存', active: true },
                 ]}
@@ -628,6 +640,15 @@ export function VisualConfigEditor({
                   disabled={disabled}
                   hint={`当前：${disabledText(values.streaming.keepaliveSeconds)}`}
                   error={keepaliveError}
+                />
+                <ToggleRow
+                  title="扣除伪装注入 Token"
+                  description="返回给 NewAPI/客户的 usage 只统计用户原始请求；账号限额和健康判断仍按 Claude 上游 raw usage 计算。"
+                  checked={values.claudeBillableUsageEnabled}
+                  disabled={disabled}
+                  onChange={(claudeBillableUsageEnabled) =>
+                    onChange({ claudeBillableUsageEnabled })
+                  }
                 />
               </SectionGrid>
               <SectionSubsection

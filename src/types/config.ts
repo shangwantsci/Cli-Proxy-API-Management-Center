@@ -17,10 +17,15 @@ export interface ClaudeMimicryGuardConfig {
   eventsLimit?: number;
 }
 
+export interface ClaudeBillableUsageConfig {
+  enabled?: boolean;
+}
+
 export interface Config {
   debug?: boolean;
   proxyUrl?: string;
   requestRetry?: number;
+  claudeBillableUsage?: ClaudeBillableUsageConfig;
   claudeMimicryGuard?: ClaudeMimicryGuardConfig;
   quotaExceeded?: QuotaExceededConfig;
   requestLog?: boolean;
@@ -44,6 +49,7 @@ export type RawConfigSection =
   | 'debug'
   | 'proxy-url'
   | 'request-retry'
+  | 'claude-billable-usage'
   | 'claude-mimicry-guard'
   | 'quota-exceeded'
   | 'request-log'
