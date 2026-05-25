@@ -12,10 +12,16 @@ export interface QuotaExceededConfig {
   antigravityCredits?: boolean;
 }
 
+export interface ClaudeMimicryGuardConfig {
+  mode?: string;
+  eventsLimit?: number;
+}
+
 export interface Config {
   debug?: boolean;
   proxyUrl?: string;
   requestRetry?: number;
+  claudeMimicryGuard?: ClaudeMimicryGuardConfig;
   quotaExceeded?: QuotaExceededConfig;
   requestLog?: boolean;
   loggingToFile?: boolean;
@@ -38,6 +44,7 @@ export type RawConfigSection =
   | 'debug'
   | 'proxy-url'
   | 'request-retry'
+  | 'claude-mimicry-guard'
   | 'quota-exceeded'
   | 'request-log'
   | 'logging-to-file'

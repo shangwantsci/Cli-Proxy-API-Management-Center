@@ -12,6 +12,8 @@
 .accessPanel,
 .importPanel,
 .strategyPanel,
+.opsPanel,
+.mimicryPanel,
 .accountSection {
   border: 1px solid var(--border-color);
   background: var(--bg-primary);
@@ -152,6 +154,8 @@
 .importPanel,
 .accessPanel,
 .strategyPanel,
+.opsPanel,
+.mimicryPanel,
 .accountSection {
   padding: $spacing-lg;
 }
@@ -235,6 +239,355 @@
   }
 }
 
+.opsGrid,
+.mimicryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: $spacing-md;
+
+  @media (max-width: 980px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mimicryHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.mimicryBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-sm;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mimicryaligned {
+  color: $success-color;
+  border-color: rgba($success-color, 0.34);
+  background: rgba($success-color, 0.1);
+}
+
+.mimicrywarning {
+  color: $warning-color;
+  border-color: rgba($warning-color, 0.4);
+  background: rgba($warning-color, 0.12);
+}
+
+.mimicryfailed {
+  color: $error-color;
+  border-color: rgba($error-color, 0.38);
+  background: rgba($error-color, 0.12);
+}
+
+.mimicrywaiting {
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.opsColumn,
+.fingerprintBlock,
+.coverageCheck {
+  min-width: 0;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
+
+  > span {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
+  small {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+}
+
+.mimicryIssues {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  margin-top: $spacing-md;
+  padding: $spacing-md;
+  border: 1px solid rgba($warning-color, 0.28);
+  border-radius: $radius-md;
+  background: rgba($warning-color, 0.08);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+
+  strong {
+    color: var(--text-primary);
+    white-space: nowrap;
+  }
+
+  span {
+    word-break: break-word;
+  }
+}
+
+.mimicryDiagnostics {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: $spacing-md;
+  margin-top: $spacing-md;
+
+  @media (max-width: 980px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mimicryDiagnosticsColumn {
+  min-width: 0;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
+}
+
+.mimicryDiagnosticsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-sm;
+
+  strong {
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  span {
+    color: var(--text-tertiary);
+    font-size: 12px;
+  }
+}
+
+.mimicryEmpty {
+  padding: $spacing-md;
+  border-radius: $radius-sm;
+  background: var(--bg-primary);
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.mimicryClientList,
+.mimicryEventList {
+  display: grid;
+  gap: 8px;
+}
+
+.mimicryClientItem,
+.mimicryEventItem {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-sm;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+
+  strong {
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  small {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-tertiary);
+    word-break: break-word;
+  }
+}
+
+.mimicryClientItem {
+  display: grid;
+  gap: 3px;
+}
+
+.mimicryEventMain,
+.mimicryEventMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mimicryEventMain {
+  margin-bottom: 6px;
+
+  strong {
+    font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+    word-break: break-all;
+  }
+}
+
+.mimicryEventMeta span {
+  min-width: 0;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.mimicryActionBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: $radius-sm;
+  border: 1px solid var(--border-color);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mimicryActionallow {
+  color: $success-color;
+  border-color: rgba($success-color, 0.32);
+  background: rgba($success-color, 0.1);
+}
+
+.mimicryActiondegrade {
+  color: $warning-color;
+  border-color: rgba($warning-color, 0.38);
+  background: rgba($warning-color, 0.12);
+}
+
+.mimicryActionblock {
+  color: $error-color;
+  border-color: rgba($error-color, 0.38);
+  background: rgba($error-color, 0.12);
+}
+
+.statusMatrix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+
+  strong {
+    padding: 8px 10px;
+    border-radius: $radius-md;
+    background: var(--bg-primary);
+    font-size: 12px;
+  }
+}
+
+.pressureItem {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
+  + .pressureItem {
+    margin-top: $spacing-sm;
+  }
+
+  > div:first-child {
+    display: flex;
+    justify-content: space-between;
+    gap: $spacing-sm;
+  }
+}
+
+.pressureTrack {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-primary);
+
+  i {
+    display: block;
+    height: 100%;
+    min-width: 2px;
+    border-radius: inherit;
+    background: var(--primary-color);
+  }
+}
+
+.opsEmpty {
+  padding: $spacing-sm;
+  border-radius: $radius-md;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  font-size: 12px;
+}
+
+.riskList {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
+  button {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: $radius-md;
+    color: inherit;
+    background: var(--bg-primary);
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--border-hover);
+    }
+
+    span {
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+  }
+}
+
+.coverageScore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  padding: 8px 12px;
+  border: 1px solid rgba($success-color, 0.34);
+  border-radius: $radius-md;
+  color: $success-color;
+  background: rgba($success-color, 0.1);
+  font-size: 18px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.fingerprintBlock {
+  grid-column: span 1;
+}
+
 .connectionBadge {
   max-width: 420px;
   padding: 6px 10px;
@@ -285,6 +638,48 @@
   }
 }
 
+.accountToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: $spacing-md;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
+
+  > div:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+
+    strong {
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    span {
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+  }
+
+  > div:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: $spacing-sm;
+  }
+
+  @media (max-width: 760px) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .accountCard {
   display: flex;
   flex-direction: column;
@@ -294,6 +689,11 @@
   border-radius: $radius-md;
   background: var(--bg-secondary);
   min-width: 0;
+}
+
+.accountCardSelected {
+  border-color: color-mix(in srgb, var(--primary-color) 58%, var(--border-color));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 28%, transparent);
 }
 
 .accountTop {
@@ -309,6 +709,30 @@
     line-height: 1.25;
     letter-spacing: 0;
     word-break: break-word;
+  }
+}
+
+.accountTopActions {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.accountSelect {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+
+  input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--primary-color);
   }
 }
 
@@ -343,7 +767,9 @@
 }
 
 .cooling,
-.quotaCooling {
+.quotaCooling,
+.rpmCooling,
+.sessionFull {
   color: $warning-color;
   border-color: rgba($warning-color, 0.34);
   background: rgba($warning-color, 0.1);
@@ -352,6 +778,7 @@
 .disabled,
 .unavailable,
 .authExpired,
+.subscriptionIssue,
 .requestError {
   color: $error-color;
   border-color: rgba($error-color, 0.34);
@@ -628,6 +1055,27 @@
   @media (max-width: 680px) {
     grid-template-columns: 1fr;
   }
+}
+
+.batchGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-md;
+
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.batchGroup {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  min-width: 0;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
 }
 
 .textareaField {

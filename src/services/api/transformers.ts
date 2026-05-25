@@ -387,6 +387,25 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
     }
   }
 
+  const mimicryGuard = raw['claude-mimicry-guard'] ?? raw.claudeMimicryGuard;
+  if (isRecord(mimicryGuard)) {
+    const eventsLimit = mimicryGuard['events-limit'] ?? mimicryGuard.eventsLimit;
+    config.claudeMimicryGuard = {
+      mode:
+        mimicryGuard.mode === undefined || mimicryGuard.mode === null
+          ? undefined
+          : String(mimicryGuard.mode),
+    };
+    if (typeof eventsLimit === 'number' && Number.isFinite(eventsLimit)) {
+      config.claudeMimicryGuard.eventsLimit = eventsLimit;
+    } else if (typeof eventsLimit === 'string' && eventsLimit.trim() !== '') {
+      const parsed = Number(eventsLimit);
+      if (Number.isFinite(parsed)) {
+        config.claudeMimicryGuard.eventsLimit = parsed;
+      }
+    }
+  }
+
   const quota = raw['quota-exceeded'] ?? raw.quotaExceeded;
   if (isRecord(quota)) {
     config.quotaExceeded = {

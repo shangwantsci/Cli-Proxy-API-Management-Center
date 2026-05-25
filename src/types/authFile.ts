@@ -32,9 +32,16 @@ export interface AuthFileItem {
   status?: string;
   statusMessage?: string;
   healthStatus?: string;
+  statusReason?: string;
+  statusReasonLabel?: string;
   expiresAt?: string | number;
   secondsUntilExpiration?: number;
   proxyUrl?: string;
+  rpmLimit?: number;
+  currentRpm?: number;
+  maxSessions?: number;
+  activeSessions?: number;
+  quality24h?: Record<string, unknown>;
   authSource?: string;
   authMethodLabel?: string;
   lastRefresh?: string | number;

@@ -19,9 +19,14 @@ import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
 import {
   apiCallApi,
   apiKeysApi,
+  claudeMimicryApi,
   configFileApi,
   getApiCallErrorMessage,
   type ApiCallResult,
+  type ClaudeMimicryAuditResponse,
+  type ClaudeMimicryEventsResponse,
+  type ClaudeMimicryEvent,
+  type ClaudeMimicryStatus,
 } from '@/services/api';
 import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api/authFiles';
 import { oauthApi } from '@/services/api/oauth';
@@ -48,7 +53,10 @@ type AccountState =
   | 'active'
   | 'cooling'
   | 'quotaCooling'
+  | 'rpmCooling'
+  | 'sessionFull'
   | 'authExpired'
+  | 'subscriptionIssue'
   | 'requestError'
   | 'disabled'
   | 'unavailable';
@@ -57,11 +65,27 @@ interface AccountEditForm {
   proxyUrl: string;
   prefix: string;
   priority: string;
+  rpmLimit: string;
+  maxSessions: string;
   note: string;
   cloakMode: string;
   cloakStrictMode: boolean;
   cloakCacheUserId: boolean;
   cloakSensitiveWords: string;
+}
+
+interface BatchEditForm {
+  applyProxy: boolean;
+  proxyUrl: string;
+  applyPriority: boolean;
+  priority: string;
+  applyLimits: boolean;
+  rpmLimit: string;
+  maxSessions: string;
+  applyCloakMode: boolean;
+  cloakMode: string;
+  applyCacheUserId: boolean;
+  cloakCacheUserId: boolean;
 }
 
 type AccountQuotaStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -90,6 +114,20 @@ const CLOAK_MODE_OPTIONS = [
   { value: 'auto', label: '自动伪装：真实 Claude Code 不重写' },
   { value: 'never', label: '关闭伪装' },
 ];
+
+const DEFAULT_BATCH_FORM: BatchEditForm = {
+  applyProxy: false,
+  proxyUrl: '',
+  applyPriority: false,
+  priority: '0',
+  applyLimits: true,
+  rpmLimit: '60',
+  maxSessions: '5',
+  applyCloakMode: true,
+  cloakMode: 'always',
+  applyCacheUserId: true,
+  cloakCacheUserId: true,
+};
 
 function splitApiKeyDraft(value: string): string[] {
   const seen = new Set<string>();
@@ -177,6 +215,33 @@ function readNumber(source: Record<string, unknown>, keys: string[], defaultValu
   return defaultValue;
 }
 
+function readStatusReason(record: Record<string, unknown>): string {
+  return readString(record, ['status_reason', 'statusReason']).toLowerCase();
+}
+
+function readRuntimeStats(record: Record<string, unknown>) {
+  return {
+    rpmLimit: readNumber(record, ['rpm_limit', 'rpmLimit'], 60),
+    currentRpm: readNumber(record, ['current_rpm', 'currentRpm'], 0),
+    rpmResetAt: record.rpm_reset_at ?? record.rpmResetAt,
+    maxSessions: readNumber(record, ['max_sessions', 'maxSessions'], 5),
+    activeSessions: readNumber(record, ['active_sessions', 'activeSessions'], 0),
+    sessionResetAt: record.session_reset_at ?? record.sessionResetAt,
+    lastUsedAt: record.last_used_at ?? record.lastUsedAt,
+  };
+}
+
+function readQuality24h(record: Record<string, unknown>) {
+  const quality = readRecord(record.quality_24h ?? record.quality24h) ?? {};
+  return {
+    requests: readNumber(quality, ['requests'], 0),
+    success: readNumber(quality, ['success'], 0),
+    failed: readNumber(quality, ['failed'], 0),
+    rateLimited: readNumber(quality, ['rate_limited', 'rateLimited'], 0),
+    successRate: readNumber(quality, ['success_rate', 'successRate'], 100),
+  };
+}
+
 function parseDateMs(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value < 1e12 ? value * 1000 : value;
@@ -210,6 +275,10 @@ function getAccountTitle(account: AuthFileItem): string {
     readString(record, ['name']) ||
     'Claude 账号'
   );
+}
+
+function getAccountName(account: AuthFileItem): string {
+  return String(account.name ?? '').trim();
 }
 
 function claudePermanentAccountError(record: Record<string, unknown>): { code: string; message: string } | null {
@@ -352,6 +421,21 @@ function isAccountRequestBodyError(record: Record<string, unknown>): boolean {
 
 function getAccountState(account: AuthFileItem): AccountState {
   const record = account as Record<string, unknown>;
+  const statusReason = readStatusReason(record);
+  if (
+    statusReason === 'account_banned' ||
+    statusReason === 'organization_disabled' ||
+    statusReason === 'account_disabled'
+  ) {
+    return 'disabled';
+  }
+  if (statusReason === 'auth_expired') return 'authExpired';
+  if (statusReason === 'quota_cooldown') return 'quotaCooling';
+  if (statusReason === 'rpm_cooldown') return 'rpmCooling';
+  if (statusReason === 'session_full') return 'sessionFull';
+  if (statusReason === 'subscription_issue') return 'subscriptionIssue';
+  if (statusReason === 'upstream_error') return 'requestError';
+  if (statusReason === 'unavailable') return 'unavailable';
   if (account.disabled) return 'disabled';
   if (claudePermanentAccountError(record)) return 'disabled';
   if (isAccountAuthExpired(account)) return 'authExpired';
@@ -378,8 +462,14 @@ function accountStateLabel(state: AccountState): string {
       return '重试冷却';
     case 'quotaCooling':
       return '限额冷却';
+    case 'rpmCooling':
+      return 'RPM 冷却';
+    case 'sessionFull':
+      return '会话满';
     case 'authExpired':
       return '认证过期';
+    case 'subscriptionIssue':
+      return '订阅异常';
     case 'requestError':
       return '请求异常';
     case 'disabled':
@@ -391,6 +481,9 @@ function accountStateLabel(state: AccountState): string {
 
 function accountStateDetail(account: AuthFileItem): string {
   const record = account as Record<string, unknown>;
+  const statusReasonLabel = readString(record, ['status_reason_label', 'statusReasonLabel']);
+  const statusReason = readStatusReason(record);
+  const runtime = readRuntimeStats(record);
   const permanentError = claudePermanentAccountError(record);
   if (permanentError) {
     return `上游已禁用：${permanentError.message}`;
@@ -405,6 +498,15 @@ function accountStateDetail(account: AuthFileItem): string {
       : record.next_retry_after ?? record.nextRetryAfter;
     return `限额恢复 ${formatDate(recoverAt)}`;
   }
+  if (statusReason === 'rpm_cooldown') {
+    return `RPM 达到 ${runtime.currentRpm}/${runtime.rpmLimit}，恢复 ${formatDate(runtime.rpmResetAt)}`;
+  }
+  if (statusReason === 'session_full') {
+    return `会话达到 ${runtime.activeSessions}/${runtime.maxSessions}，释放 ${formatDate(runtime.sessionResetAt)}`;
+  }
+  if (statusReason === 'subscription_issue') {
+    return statusReasonLabel || '订阅、退款或账单状态异常';
+  }
   if (isAccountRequestBodyError(record)) {
     return '请求体或工具调用需要处理';
   }
@@ -413,6 +515,7 @@ function accountStateDetail(account: AuthFileItem): string {
     return `下次重试 ${formatDate(retryAt)}`;
   }
   return (
+    statusReasonLabel ||
     readString(record, ['status_message', 'statusMessage']) ||
     readString(record, ['status']) ||
     '最近没有异常'
@@ -437,6 +540,8 @@ function makeEditForm(account: AuthFileItem): AccountEditForm {
     proxyUrl: readString(record, ['proxy_url', 'proxyUrl']),
     prefix: readString(record, ['prefix']),
     priority: readString(record, ['priority']),
+    rpmLimit: readString(record, ['rpm_limit', 'rpmLimit']) || '60',
+    maxSessions: readString(record, ['max_sessions', 'maxSessions']) || '5',
     note: readString(record, ['note']),
     cloakMode: readString(record, ['cloak_mode', 'cloakMode']) || 'always',
     cloakStrictMode: readBool(record, ['cloak_strict_mode', 'cloakStrictMode'], false),
@@ -743,6 +848,90 @@ function formatQuotaPercent(value: number | null): string {
   return value === null ? '--' : `${Math.round(value)}%`;
 }
 
+function pct(part: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((part / total) * 100)));
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function mimicryStatusLabel(status?: ClaudeMimicryStatus): string {
+  switch (status) {
+    case 'aligned':
+      return '已对齐';
+    case 'warning':
+      return '需关注';
+    case 'failed':
+      return '未对齐';
+    case 'waiting':
+      return '等待请求';
+    default:
+      return '未校验';
+  }
+}
+
+function mimicryGuardActionLabel(action?: ClaudeMimicryEvent['action']): string {
+  switch (action) {
+    case 'allow':
+      return '放行';
+    case 'degrade':
+      return '修复后放行';
+    case 'block':
+      return '已阻断';
+    default:
+      return '未知';
+  }
+}
+
+function mimicryClientSourceLabel(source?: string): string {
+  switch ((source ?? '').toLowerCase()) {
+    case 'claude-code':
+      return 'Claude Code';
+    case 'cherrystudio':
+      return 'Cherry Studio';
+    case 'hermes':
+      return 'Hermes';
+    case 'openclaw':
+      return 'OpenClaw';
+    case 'opencode':
+      return 'OpenCode';
+    case 'openai-compatible':
+      return 'OpenAI 兼容';
+    default:
+      return source || '未知客户端';
+  }
+}
+
+function mimicryScoreFromStatus(status?: ClaudeMimicryStatus, fallback = 0): number {
+  switch (status) {
+    case 'aligned':
+      return 100;
+    case 'warning':
+      return 76;
+    case 'failed':
+      return 35;
+    case 'waiting':
+      return fallback;
+    default:
+      return fallback;
+  }
+}
+
+function compactList(values: unknown, fallback = '无'): string {
+  if (!Array.isArray(values) || values.length === 0) return fallback;
+  const list = values.map((item) => String(item ?? '').trim()).filter(Boolean);
+  if (list.length === 0) return fallback;
+  if (list.length <= 3) return list.join(' / ');
+  return `${list.slice(0, 3).join(' / ')} +${list.length - 3}`;
+}
+
+function auditIssueCount(values: unknown): number {
+  return Array.isArray(values) ? values.length : 0;
+}
+
 function StatCard({
   icon,
   label,
@@ -786,10 +975,17 @@ export function DashboardPage() {
   const [editingAccount, setEditingAccount] = useState<AuthFileItem | null>(null);
   const [editForm, setEditForm] = useState<AccountEditForm | null>(null);
   const [savingAccount, setSavingAccount] = useState(false);
+  const [selectedNames, setSelectedNames] = useState<string[]>([]);
+  const [batchForm, setBatchForm] = useState<BatchEditForm | null>(null);
+  const [savingBatch, setSavingBatch] = useState(false);
   const [togglingName, setTogglingName] = useState('');
   const [deletingName, setDeletingName] = useState('');
   const [reauthenticatingName, setReauthenticatingName] = useState('');
   const [quotaByAccount, setQuotaByAccount] = useState<Record<string, AccountQuotaDetail>>({});
+  const [mimicryAudit, setMimicryAudit] = useState<ClaudeMimicryAuditResponse | null>(null);
+  const [loadingMimicryAudit, setLoadingMimicryAudit] = useState(false);
+  const [mimicryEvents, setMimicryEvents] = useState<ClaudeMimicryEventsResponse | null>(null);
+  const [loadingMimicryEvents, setLoadingMimicryEvents] = useState(false);
 
   const loadAccessSettings = useCallback(async () => {
     if (connectionStatus !== 'connected') {
@@ -834,9 +1030,56 @@ export function DashboardPage() {
     }
   }, [connectionStatus, fetchConfig, showNotification]);
 
+  const loadMimicryAudit = useCallback(async () => {
+    if (connectionStatus !== 'connected') {
+      setMimicryAudit(null);
+      setMimicryEvents(null);
+      return;
+    }
+    setLoadingMimicryAudit(true);
+    try {
+      setMimicryAudit(await claudeMimicryApi.getAudit());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Claude Code 对齐状态加载失败';
+      showNotification(message, 'error');
+    } finally {
+      setLoadingMimicryAudit(false);
+    }
+  }, [connectionStatus, showNotification]);
+
+  const loadMimicryEvents = useCallback(async () => {
+    if (connectionStatus !== 'connected') {
+      setMimicryEvents(null);
+      return;
+    }
+    setLoadingMimicryEvents(true);
+    try {
+      setMimicryEvents(await claudeMimicryApi.getEvents(80));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Claude Code 守卫事件加载失败';
+      showNotification(message, 'error');
+    } finally {
+      setLoadingMimicryEvents(false);
+    }
+  }, [connectionStatus, showNotification]);
+
   useEffect(() => {
     loadAccounts();
   }, [loadAccounts]);
+
+  useEffect(() => {
+    loadMimicryAudit();
+    loadMimicryEvents();
+  }, [loadMimicryAudit, loadMimicryEvents]);
+
+  useEffect(() => {
+    setSelectedNames((current) => {
+      if (current.length === 0) return current;
+      const available = new Set(accounts.map(getAccountName).filter(Boolean));
+      const next = current.filter((name) => available.has(name));
+      return next.length === current.length ? current : next;
+    });
+  }, [accounts]);
 
   useEffect(() => {
     loadAccessSettings();
@@ -855,19 +1098,156 @@ export function DashboardPage() {
     const proxyCount = accounts.filter((account) =>
       readString(account as Record<string, unknown>, ['proxy_url', 'proxyUrl'])
     ).length;
+    const runtimeTotals = accounts.reduce(
+      (totals, account) => {
+        const runtime = readRuntimeStats(account as Record<string, unknown>);
+        totals.currentRpm += runtime.currentRpm;
+        totals.rpmLimit += runtime.rpmLimit;
+        totals.activeSessions += runtime.activeSessions;
+        totals.maxSessions += runtime.maxSessions;
+        return totals;
+      },
+      { currentRpm: 0, rpmLimit: 0, activeSessions: 0, maxSessions: 0 }
+    );
+    const quality24h = accounts.reduce(
+      (totals, account) => {
+        const quality = readQuality24h(account as Record<string, unknown>);
+        totals.requests += quality.requests;
+        totals.success += quality.success;
+        totals.rateLimited += quality.rateLimited;
+        return totals;
+      },
+      { requests: 0, success: 0, rateLimited: 0 }
+    );
 
     return {
       total: accounts.length,
       active: states.filter((state) => state === 'active').length,
-      cooling: states.filter((state) => state === 'cooling' || state === 'quotaCooling').length,
+      cooling: states.filter(
+        (state) => state === 'cooling' || state === 'quotaCooling' || state === 'rpmCooling'
+      ).length,
       unavailable: states.filter(
-        (state) => state === 'unavailable' || state === 'authExpired' || state === 'requestError'
+        (state) =>
+          state === 'unavailable' ||
+          state === 'authExpired' ||
+          state === 'requestError' ||
+          state === 'subscriptionIssue' ||
+          state === 'sessionFull'
       ).length,
       disabled: states.filter((state) => state === 'disabled').length,
       proxyCount,
       successRate: total > 0 ? Math.round((success / total) * 100) : 100,
+      qualitySuccessRate:
+        quality24h.requests > 0 ? Math.round((quality24h.success / quality24h.requests) * 100) : 100,
+      runtimeTotals,
+      quality24h,
     };
   }, [accounts, quotaByAccount]);
+
+  const selectedNameSet = useMemo(() => new Set(selectedNames), [selectedNames]);
+
+  const operationsOverview = useMemo(() => {
+    const stateCounts = accounts.reduce<Record<AccountState, number>>(
+      (counts, account) => {
+        const name = getAccountName(account);
+        const state = quotaDetailCoolingWindow(name ? quotaByAccount[name] : undefined)
+          ? 'quotaCooling'
+          : getAccountState(account);
+        counts[state] += 1;
+        return counts;
+      },
+      {
+        active: 0,
+        cooling: 0,
+        quotaCooling: 0,
+        rpmCooling: 0,
+        sessionFull: 0,
+        authExpired: 0,
+        subscriptionIssue: 0,
+        requestError: 0,
+        disabled: 0,
+        unavailable: 0,
+      }
+    );
+
+    const riskAccounts = accounts
+      .map((account) => {
+        const record = account as Record<string, unknown>;
+        const runtime = readRuntimeStats(record);
+        const quality = readQuality24h(record);
+        const state = getAccountState(account);
+        const rpmPressure = runtime.rpmLimit > 0 ? runtime.currentRpm / runtime.rpmLimit : 0;
+        const sessionPressure =
+          runtime.maxSessions > 0 ? runtime.activeSessions / runtime.maxSessions : 0;
+        const qualityPenalty = quality.requests > 0 ? (100 - quality.successRate) / 100 : 0;
+        const score =
+          (state === 'active' ? 0 : 2) +
+          rpmPressure +
+          sessionPressure +
+          qualityPenalty +
+          (quality.rateLimited > 0 ? 1 : 0);
+        return { account, state, score };
+      })
+      .filter((item) => item.score > 0.65 || item.state !== 'active')
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 5);
+
+    return {
+      stateCounts,
+      rpmPressure: pct(stats.runtimeTotals.currentRpm, stats.runtimeTotals.rpmLimit),
+      sessionPressure: pct(stats.runtimeTotals.activeSessions, stats.runtimeTotals.maxSessions),
+      proxyCoverage: pct(stats.proxyCount, stats.total),
+      riskAccounts,
+    };
+  }, [accounts, quotaByAccount, stats]);
+
+  const mimicryCoverage = useMemo(() => {
+    const raw = config?.raw ?? {};
+    const claudeHeaders = readRecord(raw['claude-header-defaults']) ?? {};
+    const ua = configText(claudeHeaders['user-agent'], 'claude-cli/2.1.148');
+    const packageVersion = configText(claudeHeaders['package-version'], '0.98.0');
+    const runtimeVersion = configText(claudeHeaders['runtime-version'], 'v24.13.0');
+    const stableDevice = readBool(claudeHeaders, ['stabilize-device-profile'], true);
+
+    const counts = accounts.reduce(
+      (result, account) => {
+        const record = account as Record<string, unknown>;
+        const cloakMode = readString(record, ['cloak_mode', 'cloakMode']) || 'always';
+        if (cloakMode === 'always') result.always += 1;
+        if (cloakMode === 'auto') result.auto += 1;
+        if (cloakMode === 'never') result.never += 1;
+        if (readBool(record, ['cloak_cache_user_id', 'cloakCacheUserId'], true)) {
+          result.cacheUserId += 1;
+        }
+        if (readBool(record, ['has_device_profile', 'hasDeviceProfile'], false)) {
+          result.deviceProfile += 1;
+        }
+        if (readString(record, ['auth_source', 'authSource']) === 'claude_code_cli') {
+          result.cliOAuth += 1;
+        }
+        return result;
+      },
+      { always: 0, auto: 0, never: 0, cacheUserId: 0, deviceProfile: 0, cliOAuth: 0 }
+    );
+
+    const total = accounts.length;
+    const score = Math.round(
+      (ua.includes('claude-cli/') ? 22 : 0) +
+        (stableDevice ? 18 : 0) +
+        pct(counts.always + counts.auto, total) * 0.2 +
+        pct(counts.cacheUserId, total) * 0.2 +
+        pct(counts.cliOAuth, total) * 0.2
+    );
+
+    return {
+      ua,
+      packageVersion,
+      runtimeVersion,
+      stableDevice,
+      counts,
+      score: clampPercent(score),
+    };
+  }, [accounts, config]);
 
   const strategySummary = useMemo(() => {
     const raw = config?.raw ?? {};
@@ -914,6 +1294,24 @@ export function DashboardPage() {
       },
     ];
   }, [config]);
+
+  const currentMimicryAudit = mimicryAudit?.audit;
+  const mimicryAuditScore = mimicryScoreFromStatus(currentMimicryAudit?.status, mimicryCoverage.score);
+  const mimicryIssueTotal =
+    (currentMimicryAudit?.failures?.length ?? 0) + (currentMimicryAudit?.warnings?.length ?? 0);
+  const recentMimicryEvents = mimicryEvents?.events ?? [];
+  const mimicryClientStats = Object.values(mimicryEvents?.client_stats ?? {}).sort(
+    (left, right) => right.total - left.total
+  );
+  const mimicryGuardRaw = readRecord((config?.raw ?? {})['claude-mimicry-guard']) ?? {};
+  const mimicryGuardMode = configText(
+    config?.claudeMimicryGuard?.mode ?? mimicryGuardRaw.mode,
+    'degrade'
+  );
+  const refreshMimicryDiagnostics = useCallback(() => {
+    loadMimicryAudit();
+    loadMimicryEvents();
+  }, [loadMimicryAudit, loadMimicryEvents]);
 
   const handleCookieImport = async () => {
     if (!sessionKey.trim()) {
@@ -987,6 +1385,135 @@ export function DashboardPage() {
   const closeEditor = () => {
     setEditingAccount(null);
     setEditForm(null);
+  };
+
+  const toggleSelectedAccount = (name: string, selected: boolean) => {
+    if (!name) return;
+    setSelectedNames((current) => {
+      const set = new Set(current);
+      if (selected) {
+        set.add(name);
+      } else {
+        set.delete(name);
+      }
+      return Array.from(set);
+    });
+  };
+
+  const selectAllAccounts = () => {
+    const names = accounts.map(getAccountName).filter(Boolean);
+    setSelectedNames((current) => (current.length === names.length ? [] : names));
+  };
+
+  const openBatchEditor = () => {
+    if (selectedNames.length === 0) {
+      showNotification('请先选择要批量修改的账号', 'error');
+      return;
+    }
+    setBatchForm(DEFAULT_BATCH_FORM);
+  };
+
+  const closeBatchEditor = () => {
+    setBatchForm(null);
+  };
+
+  const buildBatchPatch = (form: BatchEditForm): AuthFileFieldsPatch | null => {
+    const patch: AuthFileFieldsPatch = {};
+    if (form.applyProxy) {
+      patch.proxy_url = form.proxyUrl.trim();
+    }
+    if (form.applyPriority) {
+      const priority = form.priority.trim() ? Number(form.priority.trim()) : 0;
+      if (!Number.isFinite(priority)) {
+        showNotification('批量优先级必须是数字', 'error');
+        return null;
+      }
+      patch.priority = Math.floor(priority);
+    }
+    if (form.applyLimits) {
+      const rpmLimit = form.rpmLimit.trim() ? Number(form.rpmLimit.trim()) : 0;
+      const maxSessions = form.maxSessions.trim() ? Number(form.maxSessions.trim()) : 0;
+      if (!Number.isFinite(rpmLimit) || rpmLimit < 0) {
+        showNotification('批量 RPM 上限必须是大于等于 0 的数字', 'error');
+        return null;
+      }
+      if (!Number.isFinite(maxSessions) || maxSessions < 0) {
+        showNotification('批量会话上限必须是大于等于 0 的数字', 'error');
+        return null;
+      }
+      patch.rpm_limit = Math.floor(rpmLimit);
+      patch.max_sessions = Math.floor(maxSessions);
+    }
+    if (form.applyCloakMode) {
+      patch.cloak_mode = form.cloakMode;
+    }
+    if (form.applyCacheUserId) {
+      patch.cloak_cache_user_id = form.cloakCacheUserId;
+    }
+    if (Object.keys(patch).length === 0) {
+      showNotification('请至少选择一个要批量修改的字段', 'error');
+      return null;
+    }
+    return patch;
+  };
+
+  const handleBatchSave = async () => {
+    if (!batchForm || selectedNames.length === 0) return;
+    const patch = buildBatchPatch(batchForm);
+    if (!patch) {
+      return;
+    }
+    setSavingBatch(true);
+    let success = 0;
+    const failures: string[] = [];
+    for (const name of selectedNames) {
+      try {
+        await authFilesApi.patchFields(name, patch);
+        success += 1;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : '保存失败';
+        failures.push(`${name}: ${message}`);
+      }
+    }
+    try {
+      await loadAccounts();
+    } finally {
+      setSavingBatch(false);
+    }
+    if (failures.length > 0) {
+      showNotification(`批量保存完成：成功 ${success} 个，失败 ${failures.length} 个`, 'error');
+      return;
+    }
+    showNotification(`批量保存完成：${success} 个账号已更新`, 'success');
+    setSelectedNames([]);
+    closeBatchEditor();
+  };
+
+  const handleBatchSetStatus = async (disabled: boolean) => {
+    if (selectedNames.length === 0) {
+      showNotification('请先选择账号', 'error');
+      return;
+    }
+    const action = disabled ? '停用' : '启用';
+    if (!window.confirm(`确定要批量${action} ${selectedNames.length} 个 Claude 账号吗？`)) {
+      return;
+    }
+    setSavingBatch(true);
+    let success = 0;
+    for (const name of selectedNames) {
+      try {
+        await authFilesApi.setStatus(name, disabled);
+        success += 1;
+      } catch {
+        /* report aggregate below */
+      }
+    }
+    try {
+      await loadAccounts();
+    } finally {
+      setSavingBatch(false);
+    }
+    showNotification(`批量${action}完成：成功 ${success}/${selectedNames.length} 个`, success === selectedNames.length ? 'success' : 'error');
   };
 
   const handleToggleAccount = async (account: AuthFileItem) => {
@@ -1095,11 +1622,23 @@ export function DashboardPage() {
       showNotification('优先级必须是数字', 'error');
       return;
     }
+    const rpmLimit = editForm.rpmLimit.trim() ? Number(editForm.rpmLimit.trim()) : 0;
+    if (!Number.isFinite(rpmLimit) || rpmLimit < 0) {
+      showNotification('RPM 上限必须是大于等于 0 的数字', 'error');
+      return;
+    }
+    const maxSessions = editForm.maxSessions.trim() ? Number(editForm.maxSessions.trim()) : 0;
+    if (!Number.isFinite(maxSessions) || maxSessions < 0) {
+      showNotification('会话上限必须是大于等于 0 的数字', 'error');
+      return;
+    }
 
     const patch: AuthFileFieldsPatch = {
       proxy_url: editForm.proxyUrl.trim(),
       prefix: editForm.prefix.trim(),
       priority,
+      rpm_limit: Math.floor(rpmLimit),
+      max_sessions: Math.floor(maxSessions),
       note: editForm.note.trim(),
       cloak_mode: editForm.cloakMode,
       cloak_strict_mode: editForm.cloakStrictMode,
@@ -1133,7 +1672,14 @@ export function DashboardPage() {
           </p>
         </div>
         <div className={styles.heroActions}>
-          <Button variant="secondary" onClick={loadAccounts} loading={loading}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void loadAccounts();
+              void loadMimicryAudit();
+            }}
+            loading={loading || loadingMimicryAudit}
+          >
             <IconRefreshCw size={16} />
             刷新
           </Button>
@@ -1156,7 +1702,7 @@ export function DashboardPage() {
           icon={<IconCheck size={22} />}
           label="可用账号"
           value={stats.active}
-          detail={stats.cooling ? `${stats.cooling} 个冷却中` : '当前池可接收请求'}
+          detail={`会话 ${stats.runtimeTotals.activeSessions}/${stats.runtimeTotals.maxSessions}`}
           tone="good"
         />
         <StatCard
@@ -1168,11 +1714,273 @@ export function DashboardPage() {
         />
         <StatCard
           icon={<IconBot size={22} />}
-          label="代理覆盖"
-          value={`${stats.proxyCount}/${stats.total}`}
-          detail={`最近成功率 ${stats.successRate}%`}
-          tone={stats.proxyCount === stats.total && stats.total > 0 ? 'good' : 'neutral'}
+          label="24h 质量"
+          value={`${stats.quality24h.requests}`}
+          detail={`成功率 ${stats.qualitySuccessRate}% / 429 ${stats.quality24h.rateLimited} 次 / RPM ${stats.runtimeTotals.currentRpm}/${stats.runtimeTotals.rpmLimit}`}
+          tone={stats.quality24h.rateLimited > 0 ? 'warn' : 'neutral'}
         />
+      </section>
+
+      <section className={styles.opsPanel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <h2>运营总览</h2>
+            <p>从账号状态、请求质量、容量压力和风险队列快速判断账号池是否适合继续承载流量。</p>
+          </div>
+        </div>
+        <div className={styles.opsGrid}>
+          <div className={styles.opsColumn}>
+            <span>状态分布</span>
+            <div className={styles.statusMatrix}>
+              <strong>可用 {operationsOverview.stateCounts.active}</strong>
+              <strong>限额 {operationsOverview.stateCounts.quotaCooling}</strong>
+              <strong>RPM {operationsOverview.stateCounts.rpmCooling}</strong>
+              <strong>会话满 {operationsOverview.stateCounts.sessionFull}</strong>
+              <strong>认证异常 {operationsOverview.stateCounts.authExpired}</strong>
+              <strong>停用 {operationsOverview.stateCounts.disabled}</strong>
+            </div>
+          </div>
+          <div className={styles.opsColumn}>
+            <span>容量压力</span>
+            <div className={styles.pressureItem}>
+              <div>
+                <strong>RPM</strong>
+                <small>
+                  {stats.runtimeTotals.currentRpm}/{stats.runtimeTotals.rpmLimit || '不限'}
+                </small>
+              </div>
+              <div className={styles.pressureTrack}>
+                <i style={{ width: `${operationsOverview.rpmPressure}%` }} />
+              </div>
+            </div>
+            <div className={styles.pressureItem}>
+              <div>
+                <strong>会话</strong>
+                <small>
+                  {stats.runtimeTotals.activeSessions}/{stats.runtimeTotals.maxSessions || '不限'}
+                </small>
+              </div>
+              <div className={styles.pressureTrack}>
+                <i style={{ width: `${operationsOverview.sessionPressure}%` }} />
+              </div>
+            </div>
+            <div className={styles.pressureItem}>
+              <div>
+                <strong>代理覆盖</strong>
+                <small>
+                  {stats.proxyCount}/{stats.total}
+                </small>
+              </div>
+              <div className={styles.pressureTrack}>
+                <i style={{ width: `${operationsOverview.proxyCoverage}%` }} />
+              </div>
+            </div>
+          </div>
+          <div className={styles.opsColumn}>
+            <span>风险队列</span>
+            {operationsOverview.riskAccounts.length === 0 ? (
+              <div className={styles.opsEmpty}>暂无需要优先处理的账号</div>
+            ) : (
+              <div className={styles.riskList}>
+                {operationsOverview.riskAccounts.map(({ account, state }) => {
+                  const name = getAccountName(account);
+                  return (
+                    <button key={name} type="button" onClick={() => openEditor(account)}>
+                      <strong>{getAccountTitle(account)}</strong>
+                      <span>{accountStateLabel(state)} · {accountStateDetail(account)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.mimicryPanel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <h2>Claude Code 对齐状态</h2>
+            <p>直接校验最近一次真实出站请求的 system、CCH、beta、thinking、tools 与 Header。</p>
+          </div>
+          <div className={styles.mimicryHeaderActions}>
+            <span className={`${styles.mimicryBadge} ${styles[`mimicry${currentMimicryAudit?.status ?? 'waiting'}`]}`}>
+              {mimicryStatusLabel(currentMimicryAudit?.status)}
+            </span>
+            <span className={styles.coverageScore}>{mimicryAuditScore}%</span>
+            <Button
+              variant="secondary"
+              onClick={refreshMimicryDiagnostics}
+              loading={loadingMimicryAudit || loadingMimicryEvents}
+            >
+              <IconRefreshCw size={15} />
+              校验
+            </Button>
+          </div>
+        </div>
+        <div className={styles.mimicryGrid}>
+          <div className={styles.fingerprintBlock}>
+            <span>全局指纹</span>
+            <strong>{currentMimicryAudit?.headers?.user_agent || mimicryCoverage.ua}</strong>
+            <small>
+              package {currentMimicryAudit?.headers?.package_version || mimicryCoverage.packageVersion} · runtime{' '}
+              {currentMimicryAudit?.headers?.runtime_version || mimicryCoverage.runtimeVersion}
+            </small>
+          </div>
+          <div className={styles.coverageCheck}>
+            <span>真实出站请求</span>
+            <strong>{mimicryAudit?.has_recent_request ? currentMimicryAudit?.request_path : '等待第一条请求'}</strong>
+            <small>
+              {currentMimicryAudit?.model || 'claude-sonnet-4-6'} · {formatDate(currentMimicryAudit?.checked_at)}
+            </small>
+          </div>
+          <div className={styles.coverageCheck}>
+            <span>伪装守卫</span>
+            <strong>
+              {mimicryGuardMode === 'strict'
+                ? '严格阻断'
+                : mimicryGuardMode === 'observe'
+                  ? '仅记录'
+                  : '自动修复并保护'}
+            </strong>
+            <small>
+              最近 {recentMimicryEvents.length} 条 · 阻断{' '}
+              {recentMimicryEvents.filter((event) => event.action === 'block').length} · 修复后放行{' '}
+              {recentMimicryEvents.filter((event) => event.action === 'degrade').length}
+            </small>
+          </div>
+          <div className={styles.coverageCheck}>
+            <span>CCH 签名</span>
+            <strong>{mimicryStatusLabel(currentMimicryAudit?.cch?.status)}</strong>
+            <small>
+              seed {currentMimicryAudit?.cch?.seed || currentMimicryAudit?.baseline?.cch_seed || '未记录'} · actual{' '}
+              {currentMimicryAudit?.cch?.actual || '-'}
+            </small>
+          </div>
+          <div className={styles.coverageCheck}>
+            <span>System 哈希</span>
+            <strong>
+              {mimicryStatusLabel(currentMimicryAudit?.system?.status)} ·{' '}
+              {currentMimicryAudit?.system?.blocks?.length ?? 0} blocks
+            </strong>
+            <small>
+              {compactList(
+                currentMimicryAudit?.system?.blocks?.map((block) => `${block.label}:${block.hash || '-'}`)
+              )}
+            </small>
+          </div>
+          <div className={styles.coverageCheck}>
+            <span>Beta 基线</span>
+            <strong>
+              {currentMimicryAudit?.betas?.count ?? 0}/{currentMimicryAudit?.betas?.expected_count ?? 0}
+            </strong>
+            <small>
+              missing {auditIssueCount(currentMimicryAudit?.betas?.missing)} · unexpected{' '}
+              {auditIssueCount(currentMimicryAudit?.betas?.unexpected)}
+            </small>
+          </div>
+          <div className={styles.coverageCheck}>
+            <span>Thinking / top fields</span>
+            <strong>
+              {currentMimicryAudit?.thinking?.type || 'none'} · {currentMimicryAudit?.thinking?.effort || 'default'}
+            </strong>
+            <small>{compactList(currentMimicryAudit?.thinking?.top_fields)}</small>
+          </div>
+          <div className={styles.coverageCheck}>
+            <span>Tools / schema</span>
+            <strong>
+              {currentMimicryAudit?.tools?.count ?? 0} tools · {currentMimicryAudit?.tools?.schema_signature || '-'}
+            </strong>
+            <small>
+              leaky {auditIssueCount(currentMimicryAudit?.tools?.leaky_names)} · schema{' '}
+              {auditIssueCount(currentMimicryAudit?.tools?.schema_warnings)}
+            </small>
+          </div>
+          <div className={styles.coverageCheck}>
+            <span>Header 白名单</span>
+            <strong>{mimicryStatusLabel(currentMimicryAudit?.headers?.status)}</strong>
+            <small>
+              blocked {auditIssueCount(currentMimicryAudit?.headers?.blocked)} · unexpected{' '}
+              {auditIssueCount(currentMimicryAudit?.headers?.unexpected)}
+            </small>
+          </div>
+          <div className={styles.coverageCheck}>
+            <span>账号覆盖</span>
+            <strong>
+              CLI OAuth {mimicryCoverage.counts.cliOAuth}/{stats.total} · stable user_id{' '}
+              {mimicryCoverage.counts.cacheUserId}/{stats.total}
+            </strong>
+            <small>
+              设备画像 {mimicryCoverage.counts.deviceProfile}/{stats.total} · 模式 always{' '}
+              {mimicryCoverage.counts.always}
+            </small>
+          </div>
+        </div>
+        {mimicryIssueTotal > 0 && currentMimicryAudit && (
+          <div className={styles.mimicryIssues}>
+            <strong>最近问题</strong>
+            <span>{compactList([...(currentMimicryAudit.failures ?? []), ...(currentMimicryAudit.warnings ?? [])], '无')}</span>
+          </div>
+        )}
+        <div className={styles.mimicryDiagnostics}>
+          <div className={styles.mimicryDiagnosticsColumn}>
+            <div className={styles.mimicryDiagnosticsHeader}>
+              <strong>客户端来源</strong>
+              <span>{mimicryClientStats.length || 0} 类</span>
+            </div>
+            {mimicryClientStats.length === 0 ? (
+              <div className={styles.mimicryEmpty}>暂无请求来源统计</div>
+            ) : (
+              <div className={styles.mimicryClientList}>
+                {mimicryClientStats.slice(0, 6).map((stat) => (
+                  <div key={stat.client_source} className={styles.mimicryClientItem}>
+                    <strong>{mimicryClientSourceLabel(stat.client_source)}</strong>
+                    <span>
+                      {stat.total} 次 · 放行 {stat.allowed} · 修复 {stat.degraded} · 阻断 {stat.blocked}
+                    </span>
+                    <small>{stat.last_reason || formatDate(stat.last_seen)}</small>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className={styles.mimicryDiagnosticsColumn}>
+            <div className={styles.mimicryDiagnosticsHeader}>
+              <strong>最近守卫事件</strong>
+              <span>{loadingMimicryEvents ? '加载中' : `${recentMimicryEvents.length} 条`}</span>
+            </div>
+            {recentMimicryEvents.length === 0 ? (
+              <div className={styles.mimicryEmpty}>暂无可定位的守卫事件</div>
+            ) : (
+              <div className={styles.mimicryEventList}>
+                {recentMimicryEvents.slice(0, 8).map((event) => (
+                  <div key={event.id} className={styles.mimicryEventItem}>
+                    <div className={styles.mimicryEventMain}>
+                      <span
+                        className={`${styles.mimicryActionBadge} ${
+                          styles[`mimicryAction${event.action}`]
+                        }`}
+                      >
+                        {mimicryGuardActionLabel(event.action)}
+                      </span>
+                      <strong>{event.request_id || event.id}</strong>
+                      <small>{formatDate(event.at)}</small>
+                    </div>
+                    <div className={styles.mimicryEventMeta}>
+                      <span>{mimicryClientSourceLabel(event.client_source)}</span>
+                      <span>{event.auth_label || event.auth_id || '未绑定账号'}</span>
+                      <span>{event.upstream_attempted ? event.upstream_status || '上游无状态' : '未发往上游'}</span>
+                    </div>
+                    <small>
+                      {event.upstream_error ||
+                        compactList([...(event.reasons ?? []), ...(event.failures ?? []), ...(event.warnings ?? [])])}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </section>
 
       <section className={styles.accessPanel}>
@@ -1278,6 +2086,43 @@ export function DashboardPage() {
           </span>
         </div>
 
+        <div className={styles.accountToolbar}>
+          <div>
+            <strong>已选 {selectedNames.length}</strong>
+            <span>批量修改会逐个账号保存，失败账号不会影响其他账号。</span>
+          </div>
+          <div>
+            <Button variant="ghost" size="sm" onClick={selectAllAccounts} disabled={accounts.length === 0}>
+              {selectedNames.length === accounts.length && accounts.length > 0 ? '取消全选' : '全选'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={openBatchEditor}
+              disabled={selectedNames.length === 0 || savingBatch}
+            >
+              <IconSettings size={14} />
+              批量策略
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleBatchSetStatus(false)}
+              disabled={selectedNames.length === 0 || savingBatch}
+            >
+              批量启用
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => handleBatchSetStatus(true)}
+              disabled={selectedNames.length === 0 || savingBatch}
+            >
+              批量停用
+            </Button>
+          </div>
+        </div>
+
         {loading ? (
           <div className={styles.emptyState}>正在加载 Claude 账号池...</div>
         ) : accounts.length === 0 ? (
@@ -1297,9 +2142,12 @@ export function DashboardPage() {
               const proxyUrl = readString(record, ['proxy_url', 'proxyUrl']);
               const prefix = readString(record, ['prefix']) || '默认';
               const priority = readNumber(record, ['priority'], 0);
+              const runtime = readRuntimeStats(record);
+              const quality = readQuality24h(record);
               const cloakMode = readString(record, ['cloak_mode', 'cloakMode']) || 'always';
               const cacheUserId = readBool(record, ['cloak_cache_user_id', 'cloakCacheUserId'], true);
               const permanentError = claudePermanentAccountError(record);
+              const statusReasonLabel = readString(record, ['status_reason_label', 'statusReasonLabel']);
               const stateDetail = quotaCoolingWindow
                 ? `${quotaCoolingWindow.label} 额度已用完，恢复 ${quotaCoolingWindow.resetLabel}`
                 : accountStateDetail(account);
@@ -1309,19 +2157,34 @@ export function DashboardPage() {
               const healthLabel = permanentError
                 ? '上游已禁用'
                 : state === 'active'
-                  ? healthStatusLabel(record.health_status ?? record.healthStatus)
+                  ? statusReasonLabel || healthStatusLabel(record.health_status ?? record.healthStatus)
                   : accountStateLabel(state);
+              const qualityRate =
+                quality.requests > 0 ? Math.round((quality.success / quality.requests) * 100) : 100;
 
               return (
-                <article key={name || getAccountTitle(account)} className={styles.accountCard}>
+                <article
+                  key={name || getAccountTitle(account)}
+                  className={`${styles.accountCard} ${selectedNameSet.has(name) ? styles.accountCardSelected : ''}`}
+                >
                   <div className={styles.accountTop}>
                     <div>
                       <h3>{getAccountTitle(account)}</h3>
                       <span className={styles.fileName}>{name}</span>
                     </div>
-                    <span className={`${styles.statusPill} ${styles[state]}`}>
-                      {accountStateLabel(state)}
-                    </span>
+                    <div className={styles.accountTopActions}>
+                      <label className={styles.accountSelect}>
+                        <input
+                          type="checkbox"
+                          checked={selectedNameSet.has(name)}
+                          onChange={(event) => toggleSelectedAccount(name, event.target.checked)}
+                        />
+                        <span>选择</span>
+                      </label>
+                      <span className={`${styles.statusPill} ${styles[state]}`}>
+                        {accountStateLabel(state)}
+                      </span>
+                    </div>
                   </div>
                   <div className={styles.accountMeta}>
                     <span>{stateDetail}</span>
@@ -1351,6 +2214,20 @@ export function DashboardPage() {
                       <dd>{priority}</dd>
                     </div>
                     <div>
+                      <dt>RPM</dt>
+                      <dd>
+                        {runtime.currentRpm}/{runtime.rpmLimit || '不限'}
+                        {runtime.rpmResetAt ? ` · ${formatDate(runtime.rpmResetAt)}` : ''}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>会话</dt>
+                      <dd>
+                        {runtime.activeSessions}/{runtime.maxSessions || '不限'}
+                        {runtime.sessionResetAt ? ` · ${formatDate(runtime.sessionResetAt)}` : ''}
+                      </dd>
+                    </div>
+                    <div>
                       <dt>伪装</dt>
                       <dd>
                         {cloakMode}
@@ -1362,8 +2239,18 @@ export function DashboardPage() {
                       <dd>{healthLabel}</dd>
                     </div>
                     <div>
+                      <dt>24h 质量</dt>
+                      <dd>
+                        {quality.requests} 请求 / {qualityRate}% / 429 {quality.rateLimited}
+                      </dd>
+                    </div>
+                    <div>
                       <dt>认证方式</dt>
                       <dd>{claudeAuthMethodText(record)}</dd>
+                    </div>
+                    <div>
+                      <dt>最近使用</dt>
+                      <dd>{formatDate(runtime.lastUsedAt)}</dd>
                     </div>
                     <div>
                       <dt>有效期</dt>
@@ -1485,6 +2372,127 @@ export function DashboardPage() {
         )}
       </section>
 
+      {batchForm && (
+        <div className={styles.modalBackdrop} role="presentation">
+          <div className={styles.modal} role="dialog" aria-modal="true" aria-label="批量账号策略">
+            <div className={styles.modalHeader}>
+              <div>
+                <h2>批量账号策略</h2>
+                <p>将选中的字段写入 {selectedNames.length} 个 Claude 账号；未勾选的字段保持原样。</p>
+              </div>
+              <button type="button" className={styles.iconButton} onClick={closeBatchEditor} aria-label="关闭">
+                ×
+              </button>
+            </div>
+
+            <div className={styles.batchGrid}>
+              <section className={styles.batchGroup}>
+                <ToggleSwitch
+                  checked={batchForm.applyLimits}
+                  onChange={(applyLimits) => setBatchForm({ ...batchForm, applyLimits })}
+                  label="更新 RPM 与会话上限"
+                />
+                <div className={styles.formGrid}>
+                  <Input
+                    label="RPM 上限"
+                    type="number"
+                    value={batchForm.rpmLimit}
+                    disabled={!batchForm.applyLimits}
+                    onChange={(event) => setBatchForm({ ...batchForm, rpmLimit: event.target.value })}
+                    placeholder="60"
+                  />
+                  <Input
+                    label="会话上限"
+                    type="number"
+                    value={batchForm.maxSessions}
+                    disabled={!batchForm.applyLimits}
+                    onChange={(event) =>
+                      setBatchForm({ ...batchForm, maxSessions: event.target.value })
+                    }
+                    placeholder="5"
+                  />
+                </div>
+              </section>
+
+              <section className={styles.batchGroup}>
+                <ToggleSwitch
+                  checked={batchForm.applyCloakMode}
+                  onChange={(applyCloakMode) => setBatchForm({ ...batchForm, applyCloakMode })}
+                  label="更新伪装模式"
+                />
+                <div className={styles.selectField}>
+                  <label>伪装模式</label>
+                  <Select
+                    value={batchForm.cloakMode}
+                    options={CLOAK_MODE_OPTIONS}
+                    disabled={!batchForm.applyCloakMode}
+                    onChange={(cloakMode) => setBatchForm({ ...batchForm, cloakMode })}
+                  />
+                </div>
+              </section>
+
+              <section className={styles.batchGroup}>
+                <ToggleSwitch
+                  checked={batchForm.applyCacheUserId}
+                  onChange={(applyCacheUserId) =>
+                    setBatchForm({ ...batchForm, applyCacheUserId })
+                  }
+                  label="更新稳定 user_id"
+                />
+                <ToggleSwitch
+                  checked={batchForm.cloakCacheUserId}
+                  disabled={!batchForm.applyCacheUserId}
+                  onChange={(cloakCacheUserId) =>
+                    setBatchForm({ ...batchForm, cloakCacheUserId })
+                  }
+                  label="稳定 Claude Code user_id"
+                />
+              </section>
+
+              <section className={styles.batchGroup}>
+                <ToggleSwitch
+                  checked={batchForm.applyProxy}
+                  onChange={(applyProxy) => setBatchForm({ ...batchForm, applyProxy })}
+                  label="更新专属代理"
+                />
+                <Input
+                  label="专属代理"
+                  value={batchForm.proxyUrl}
+                  disabled={!batchForm.applyProxy}
+                  onChange={(event) => setBatchForm({ ...batchForm, proxyUrl: event.target.value })}
+                  placeholder="留空表示回到全局代理，direct/none 表示直连"
+                />
+              </section>
+
+              <section className={styles.batchGroup}>
+                <ToggleSwitch
+                  checked={batchForm.applyPriority}
+                  onChange={(applyPriority) => setBatchForm({ ...batchForm, applyPriority })}
+                  label="更新优先级"
+                />
+                <Input
+                  label="优先级"
+                  type="number"
+                  value={batchForm.priority}
+                  disabled={!batchForm.applyPriority}
+                  onChange={(event) => setBatchForm({ ...batchForm, priority: event.target.value })}
+                  placeholder="0"
+                />
+              </section>
+            </div>
+
+            <div className={styles.modalActions}>
+              <Button variant="ghost" onClick={closeBatchEditor}>
+                取消
+              </Button>
+              <Button onClick={handleBatchSave} loading={savingBatch}>
+                保存批量策略
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingAccount && editForm && (
         <div className={styles.modalBackdrop} role="presentation">
           <div className={styles.modal} role="dialog" aria-modal="true" aria-label="账号策略设置">
@@ -1518,6 +2526,22 @@ export function DashboardPage() {
                 value={editForm.priority}
                 onChange={(event) => setEditForm({ ...editForm, priority: event.target.value })}
                 placeholder="0"
+              />
+              <Input
+                label="RPM 上限"
+                type="number"
+                value={editForm.rpmLimit}
+                onChange={(event) => setEditForm({ ...editForm, rpmLimit: event.target.value })}
+                placeholder="60"
+                hint="每分钟最多请求数，0 表示不限制；建议生产账号保持 60 或更低。"
+              />
+              <Input
+                label="会话上限"
+                type="number"
+                value={editForm.maxSessions}
+                onChange={(event) => setEditForm({ ...editForm, maxSessions: event.target.value })}
+                placeholder="5"
+                hint="同一时间可绑定的下游会话数，0 表示不限制；同一会话不会被重复计数。"
               />
               <div className={styles.selectField}>
                 <label>伪装模式</label>

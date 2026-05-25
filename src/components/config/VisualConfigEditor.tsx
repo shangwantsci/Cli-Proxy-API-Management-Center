@@ -200,6 +200,10 @@ export function VisualConfigEditor({
   );
 
   const requestRetryError = getValidationMessage(t, validationErrors?.requestRetry);
+  const claudeMimicryGuardEventsLimitError = getValidationMessage(
+    t,
+    validationErrors?.claudeMimicryGuardEventsLimit
+  );
   const maxRetryCredentialsError = getValidationMessage(t, validationErrors?.maxRetryCredentials);
   const maxRetryIntervalError = getValidationMessage(t, validationErrors?.maxRetryInterval);
   const claudeQuotaFiveHourError = getValidationMessage(
@@ -236,7 +240,7 @@ export function VisualConfigEditor({
         id: 'cloak',
         title: 'Claude Code 伪装',
         icon: IconBot,
-        errorCount: 0,
+        errorCount: countErrors(['claudeMimicryGuardEventsLimit']),
       },
       {
         id: 'cache',
@@ -290,6 +294,14 @@ export function VisualConfigEditor({
       { value: 'false', label: '允许图像请求' },
       { value: 'true', label: '拦截全部图像请求' },
       { value: 'chat', label: '仅拦截聊天端点注入' },
+    ],
+    []
+  );
+  const mimicryGuardModeOptions = useMemo(
+    () => [
+      { value: 'degrade', label: '自动修复并保护' },
+      { value: 'strict', label: '严格阻断异常' },
+      { value: 'observe', label: '仅记录不阻断' },
     ],
     []
   );
@@ -543,6 +555,34 @@ export function VisualConfigEditor({
                   onChange={(claudeHeaderStabilizeDeviceProfile) =>
                     onChange({ claudeHeaderStabilizeDeviceProfile })
                   }
+                />
+                <FieldShell
+                  label="伪装守卫模式"
+                  hint="自动修复并保护会放行可兼容请求、阻断明显泄露；严格模式会阻断未知工具等风险项。"
+                >
+                  <Select
+                    value={values.claudeMimicryGuardMode}
+                    options={mimicryGuardModeOptions}
+                    disabled={disabled}
+                    onChange={(nextValue) =>
+                      onChange({
+                        claudeMimicryGuardMode:
+                          nextValue as VisualConfigValues['claudeMimicryGuardMode'],
+                      })
+                    }
+                  />
+                </FieldShell>
+                <Input
+                  label="诊断事件保留条数"
+                  type="number"
+                  min={1}
+                  max={2000}
+                  placeholder="500"
+                  value={values.claudeMimicryGuardEventsLimit}
+                  onChange={(e) => onChange({ claudeMimicryGuardEventsLimit: e.target.value })}
+                  disabled={disabled}
+                  hint="保存在内存里，用于按时间定位客户请求失败原因。"
+                  error={claudeMimicryGuardEventsLimitError}
                 />
               </SectionGrid>
             </SectionStack>

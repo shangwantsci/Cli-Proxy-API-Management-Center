@@ -139,6 +139,13 @@ function setIntFromStringInDoc(doc: YamlDocument, path: YamlPath, value: unknown
   }
 }
 
+function parseClaudeMimicryGuardMode(raw: unknown): VisualConfigValues['claudeMimicryGuardMode'] {
+  const normalized = String(raw ?? '').trim().toLowerCase();
+  if (normalized === 'strict') return 'strict';
+  if (normalized === 'observe' || normalized === 'off' || normalized === 'disabled') return 'observe';
+  return 'degrade';
+}
+
 function setDisableImageGenerationInDoc(
   doc: YamlDocument,
   path: YamlPath,
@@ -177,6 +184,9 @@ export function getVisualConfigValidationErrors(
 ): VisualConfigValidationErrors {
   return {
     requestRetry: getNonNegativeIntegerError(values.requestRetry),
+    claudeMimicryGuardEventsLimit: getNonNegativeIntegerError(
+      values.claudeMimicryGuardEventsLimit
+    ),
     maxRetryCredentials: getNonNegativeIntegerError(values.maxRetryCredentials),
     maxRetryInterval: getNonNegativeIntegerError(values.maxRetryInterval),
     claudeQuotaFiveHourRemainingPercent: getPercentIntegerError(
@@ -695,6 +705,22 @@ function applyClaudeStrategyVisualChangesToDoc(
   setBooleanInDoc(doc, ['force-model-prefix'], values.forceModelPrefix);
   setBooleanInDoc(doc, ['passthrough-headers'], values.passthroughHeaders);
   setManagedIntFromStringInDoc(doc, ['request-retry'], values.requestRetry, dirtyFields, 'requestRetry');
+  if (
+    docHas(doc, ['claude-mimicry-guard']) ||
+    dirtyFields.has('claudeMimicryGuardMode') ||
+    dirtyFields.has('claudeMimicryGuardEventsLimit')
+  ) {
+    ensureMapInDoc(doc, ['claude-mimicry-guard']);
+    doc.setIn(['claude-mimicry-guard', 'mode'], values.claudeMimicryGuardMode);
+    setManagedIntFromStringInDoc(
+      doc,
+      ['claude-mimicry-guard', 'events-limit'],
+      values.claudeMimicryGuardEventsLimit,
+      dirtyFields,
+      'claudeMimicryGuardEventsLimit'
+    );
+    deleteIfMapEmpty(doc, ['claude-mimicry-guard']);
+  }
   setManagedIntFromStringInDoc(
     doc,
     ['max-retry-credentials'],
@@ -898,6 +924,8 @@ function getNextDirtyFields(
       'usageStatisticsEnabled',
       'redisUsageQueueRetentionSeconds',
       'passthroughHeaders',
+      'claudeMimicryGuardMode',
+      'claudeMimicryGuardEventsLimit',
       'disableCooling',
       'disableImageGeneration',
       'authAutoRefreshWorkers',
@@ -1180,6 +1208,7 @@ export function useVisualConfig() {
       const streaming = asRecord(parsed.streaming);
       const claudeQuotaCoolingThresholds = asRecord(parsed['claude-quota-cooling-thresholds']);
       const claudeHeaderDefaults = asRecord(parsed['claude-header-defaults']);
+      const claudeMimicryGuard = asRecord(parsed['claude-mimicry-guard']);
       const codexHeaderDefaults = asRecord(parsed['codex-header-defaults']);
 
       const newValues: VisualConfigValues = {
@@ -1221,6 +1250,12 @@ export function useVisualConfig() {
         forceModelPrefix: Boolean(parsed['force-model-prefix']),
         passthroughHeaders: Boolean(parsed['passthrough-headers']),
         requestRetry: String(parsed['request-retry'] ?? DEFAULT_VISUAL_VALUES.requestRetry),
+        claudeMimicryGuardMode: parseClaudeMimicryGuardMode(claudeMimicryGuard?.mode),
+        claudeMimicryGuardEventsLimit: String(
+          claudeMimicryGuard?.['events-limit'] ??
+            claudeMimicryGuard?.eventsLimit ??
+            DEFAULT_VISUAL_VALUES.claudeMimicryGuardEventsLimit
+        ),
         maxRetryCredentials: String(
           parsed['max-retry-credentials'] ?? DEFAULT_VISUAL_VALUES.maxRetryCredentials
         ),
@@ -1405,6 +1440,20 @@ export function useVisualConfig() {
         setBooleanInDoc(doc, ['force-model-prefix'], values.forceModelPrefix);
         setBooleanInDoc(doc, ['passthrough-headers'], values.passthroughHeaders);
         setIntFromStringInDoc(doc, ['request-retry'], values.requestRetry);
+        if (
+          docHas(doc, ['claude-mimicry-guard']) ||
+          dirtyFields.has('claudeMimicryGuardMode') ||
+          dirtyFields.has('claudeMimicryGuardEventsLimit')
+        ) {
+          ensureMapInDoc(doc, ['claude-mimicry-guard']);
+          doc.setIn(['claude-mimicry-guard', 'mode'], values.claudeMimicryGuardMode);
+          setIntFromStringInDoc(
+            doc,
+            ['claude-mimicry-guard', 'events-limit'],
+            values.claudeMimicryGuardEventsLimit
+          );
+          deleteIfMapEmpty(doc, ['claude-mimicry-guard']);
+        }
         setIntFromStringInDoc(doc, ['max-retry-credentials'], values.maxRetryCredentials);
         setIntFromStringInDoc(doc, ['max-retry-interval'], values.maxRetryInterval);
         if (

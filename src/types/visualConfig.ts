@@ -11,6 +11,7 @@ export type VisualConfigFieldPath =
   | 'logsMaxTotalSizeMb'
   | 'redisUsageQueueRetentionSeconds'
   | 'requestRetry'
+  | 'claudeMimicryGuardEventsLimit'
   | 'maxRetryCredentials'
   | 'maxRetryInterval'
   | 'claudeQuotaFiveHourRemainingPercent'
@@ -96,6 +97,8 @@ export type VisualConfigValues = {
   forceModelPrefix: boolean;
   passthroughHeaders: boolean;
   requestRetry: string;
+  claudeMimicryGuardMode: 'degrade' | 'strict' | 'observe';
+  claudeMimicryGuardEventsLimit: string;
   maxRetryCredentials: string;
   maxRetryInterval: string;
   claudeQuotaFiveHourRemainingPercent: string;
@@ -159,6 +162,8 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   forceModelPrefix: false,
   passthroughHeaders: false,
   requestRetry: '2',
+  claudeMimicryGuardMode: 'degrade',
+  claudeMimicryGuardEventsLimit: '500',
   maxRetryCredentials: '0',
   maxRetryInterval: '30',
   claudeQuotaFiveHourRemainingPercent: '20',

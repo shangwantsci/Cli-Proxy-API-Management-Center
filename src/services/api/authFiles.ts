@@ -24,6 +24,8 @@ export type AuthFileFieldsPatch = {
   headers?: Record<string, string>;
   priority?: number;
   note?: string;
+  rpm_limit?: number;
+  max_sessions?: number;
   cloak_mode?: string;
   cloak_strict_mode?: boolean;
   cloak_sensitive_words?: string[];
