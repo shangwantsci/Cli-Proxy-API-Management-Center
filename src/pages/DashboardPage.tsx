@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { parseDocument } from 'yaml';
 import { Button } from '@/components/ui/Button';
@@ -70,6 +71,8 @@ type AccountStateFilter = AccountState | 'all' | 'banned';
 type AccountProxyFilter = 'all' | 'withProxy' | 'defaultProxy' | 'direct';
 type AccountAuthFilter = 'all' | 'claude_code_cli' | 'claude_platform' | 'unknown';
 type AccountViewMode = 'table' | 'cards';
+
+const ACCOUNT_VIEW_MODE_STORAGE_KEY = 'claude-account-view-mode-v2';
 
 interface AccountEditForm {
   proxyUrl: string;
@@ -1126,10 +1129,11 @@ export function DashboardPage() {
   const [accountViewMode, setAccountViewMode] = useState<AccountViewMode>(() =>
     typeof window === 'undefined'
       ? 'table'
-      : window.localStorage.getItem('claude-account-view-mode') === 'cards'
+      : window.localStorage.getItem(ACCOUNT_VIEW_MODE_STORAGE_KEY) === 'cards'
         ? 'cards'
         : 'table'
   );
+  const [detailAccountName, setDetailAccountName] = useState<string | null>(null);
   const [togglingName, setTogglingName] = useState('');
   const [deletingName, setDeletingName] = useState('');
   const [reauthenticatingName, setReauthenticatingName] = useState('');
@@ -1183,6 +1187,19 @@ export function DashboardPage() {
       setLoading(false);
     }
   }, [connectionStatus, fetchConfig, showNotification]);
+
+  const refreshSingleAccountSnapshot = useCallback(
+    async (name: string) => {
+      if (!name || connectionStatus !== 'connected') return;
+      const files = await authFilesApi.listClaudeHealth();
+      const updated = files.find((file) => getAccountName(file) === name);
+      if (!updated) return;
+      setAccounts((current) =>
+        current.map((account) => (getAccountName(account) === name ? { ...account, ...updated } : account))
+      );
+    },
+    [connectionStatus]
+  );
 
   const loadProxyPool = useCallback(async () => {
     if (connectionStatus !== 'connected') {
@@ -1253,12 +1270,18 @@ export function DashboardPage() {
   }, [accounts]);
 
   useEffect(() => {
+    if (!detailAccountName) return;
+    if (accounts.some((account) => getAccountName(account) === detailAccountName)) return;
+    setDetailAccountName(null);
+  }, [accounts, detailAccountName]);
+
+  useEffect(() => {
     loadAccessSettings();
   }, [loadAccessSettings]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('claude-account-view-mode', accountViewMode);
+    window.localStorage.setItem(ACCOUNT_VIEW_MODE_STORAGE_KEY, accountViewMode);
   }, [accountViewMode]);
 
   const stats = useMemo(() => {
@@ -1321,6 +1344,13 @@ export function DashboardPage() {
   }, [accounts, quotaByAccount]);
 
   const selectedNameSet = useMemo(() => new Set(selectedNames), [selectedNames]);
+  const detailAccount = useMemo(
+    () =>
+      detailAccountName
+        ? accounts.find((account) => getAccountName(account) === detailAccountName) ?? null
+        : null,
+    [accounts, detailAccountName]
+  );
   const filteredAccounts = useMemo(() => {
     const query = accountSearch.trim().toLowerCase();
     return accounts.filter((account) => {
@@ -1971,7 +2001,7 @@ export function DashboardPage() {
         [name]: detail,
       }));
       showNotification('订阅与额度信息已刷新', 'success');
-      void loadAccounts();
+      void refreshSingleAccountSnapshot(name).catch(() => {});
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '订阅与额度查询失败';
       setQuotaByAccount((prev) => ({
@@ -1979,7 +2009,7 @@ export function DashboardPage() {
         [name]: { status: 'error', windows: [], error: message },
       }));
       showNotification(message, 'error');
-      void loadAccounts();
+      void refreshSingleAccountSnapshot(name).catch(() => {});
     }
   };
 
@@ -2021,7 +2051,7 @@ export function DashboardPage() {
       await authFilesApi.patchFields(name, patch);
       showNotification('账号策略已保存', 'success');
       closeEditor();
-      await loadAccounts();
+      await refreshSingleAccountSnapshot(name);
       await loadProxyPool();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '账号策略保存失败';
@@ -2040,6 +2070,220 @@ export function DashboardPage() {
     .sort((left, right) => right[1] - left[1])
     .slice(0, 6);
   const recentSessionImportResults = (sessionImportJob?.results ?? []).slice(-6).reverse();
+  const renderPortal = (content: ReactNode) =>
+    typeof document === 'undefined' ? null : createPortal(content, document.body);
+
+  const renderAccountDetailDrawer = (account: AuthFileItem) => {
+    const record = account as Record<string, unknown>;
+    const name = getAccountName(account);
+    const quotaDetail = name ? quotaByAccount[name] : undefined;
+    const quotaCoolingWindow = quotaDetailCoolingWindow(quotaDetail);
+    const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
+    const recent = normalizeRecentRequestBuckets(account.recent_requests ?? account.recentRequests);
+    const bar = statusBarDataFromRecentRequests(recent);
+    const proxyUrl = readString(record, ['proxy_url', 'proxyUrl']);
+    const prefix = readString(record, ['prefix']) || '默认';
+    const priority = readNumber(record, ['priority'], 0);
+    const runtime = readRuntimeStats(record);
+    const quality = readQuality24h(record);
+    const qualityRate = quality.requests > 0 ? Math.round((quality.success / quality.requests) * 100) : 100;
+    const cloakMode = readString(record, ['cloak_mode', 'cloakMode']) || 'always';
+    const cacheUserId = readBool(record, ['cloak_cache_user_id', 'cloakCacheUserId'], true);
+    const permanentError = claudePermanentAccountError(record);
+    const stateDetail = quotaCoolingWindow
+      ? `${quotaCoolingWindow.label} 额度已用完，恢复 ${quotaCoolingWindow.resetLabel}`
+      : accountStateDetail(account);
+    const runtimeQuotaText = quotaCoolingWindow
+      ? `${quotaCoolingWindow.label} 额度已用完，恢复 ${quotaCoolingWindow.resetLabel}`
+      : quotaRuntimeText(record);
+    const closeDetail = () => setDetailAccountName(null);
+
+    return (
+      <div className={styles.drawerBackdrop} role="presentation" onClick={closeDetail}>
+        <aside
+          className={styles.accountDetailDrawer}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Claude 账号详情"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className={styles.drawerHeader}>
+            <div>
+              <span className={styles.drawerEyebrow}>账号详情</span>
+              <h2>{getAccountTitle(account)}</h2>
+              <p>{name}</p>
+            </div>
+            <button type="button" className={styles.iconButton} onClick={closeDetail} aria-label="关闭详情">
+              ×
+            </button>
+          </div>
+
+          <div className={styles.drawerStatusRow}>
+            <span className={`${styles.statusPill} ${styles[state]}`}>{accountStateLabel(state)}</span>
+            <span>{stateDetail}</span>
+          </div>
+
+          <div className={styles.healthBar} aria-label="最近请求状态">
+            {bar.blocks.map((block, index) => (
+              <span key={`${name}-drawer-block-${index}`} className={styles[`block${block}`]} />
+            ))}
+          </div>
+          <div className={styles.accountMetrics}>
+            <span>成功 {normalizeUsageTotal(account.success)}</span>
+            <span>失败 {normalizeUsageTotal(account.failed)}</span>
+            <span>{Math.round(bar.successRate)}%</span>
+          </div>
+
+          <dl className={styles.accountConfig}>
+            <div>
+              <dt>代理</dt>
+              <dd>{proxyUrl || '未配置'}</dd>
+            </div>
+            <div>
+              <dt>前缀</dt>
+              <dd>{prefix}</dd>
+            </div>
+            <div>
+              <dt>优先级</dt>
+              <dd>{priority}</dd>
+            </div>
+            <div>
+              <dt>RPM</dt>
+              <dd>
+                {runtime.currentRpm}/{runtime.rpmLimit || '不限'}
+                {runtime.rpmResetAt ? ` · ${formatDate(runtime.rpmResetAt)}` : ''}
+              </dd>
+            </div>
+            <div>
+              <dt>会话</dt>
+              <dd>
+                {runtime.activeSessions}/{runtime.maxSessions || '不限'}
+                {runtime.sessionResetAt ? ` · ${formatDate(runtime.sessionResetAt)}` : ''}
+              </dd>
+            </div>
+            <div>
+              <dt>24h 质量</dt>
+              <dd>
+                {quality.requests} 请求 / {qualityRate}% / 429 {quality.rateLimited}
+              </dd>
+            </div>
+            <div>
+              <dt>认证方式</dt>
+              <dd>{claudeAuthMethodText(record)}</dd>
+            </div>
+            <div>
+              <dt>伪装</dt>
+              <dd>
+                {cloakMode}
+                {cacheUserId ? ' / 稳定 user_id' : ' / 每次生成 user_id'}
+              </dd>
+            </div>
+            <div>
+              <dt>最近使用</dt>
+              <dd>{formatDate(runtime.lastUsedAt)}</dd>
+            </div>
+            <div>
+              <dt>有效期</dt>
+              <dd>{formatDate(record.expires_at ?? record.expiresAt)}</dd>
+            </div>
+            <div>
+              <dt>运行限额</dt>
+              <dd>{runtimeQuotaText}</dd>
+            </div>
+            <div>
+              <dt>最近错误</dt>
+              <dd>{lastErrorText(record)}</dd>
+            </div>
+          </dl>
+
+          <div className={styles.quotaPanel}>
+            <div className={styles.quotaPanelHeader}>
+              <div>
+                <strong>订阅与额度</strong>
+                <span>
+                  {permanentError
+                    ? '账号已被上游禁用，额度信息仅供历史参考'
+                    : quotaDetail?.status === 'success'
+                      ? `${quotaDetail.planLabel || '未知套餐'}${quotaDetail.subscriptionStatus ? ` / ${quotaDetail.subscriptionStatus}` : ''}`
+                      : '按需查询 Claude 上游用量'}
+                </span>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={quotaDetail?.status === 'loading'}
+                disabled={Boolean(permanentError)}
+                onClick={() => handleRefreshAccountQuota(account)}
+              >
+                刷新额度
+              </Button>
+            </div>
+            {permanentError ? (
+              <div className={styles.quotaError}>
+                {permanentError.message}。该账号已从生产轮询中隔离，已有额度信息只表示 OAuth 资料接口曾经可读。
+              </div>
+            ) : null}
+            {quotaDetail?.status === 'success' ? (
+              <div className={styles.quotaContent}>
+                <div className={styles.quotaSummary}>
+                  <span>{quotaDetail.accountEmail || getAccountTitle(account)}</span>
+                  <span>{quotaDetail.organizationName || '个人/默认组织'}</span>
+                </div>
+                {quotaDetail.windows.length > 0 ? (
+                  quotaDetail.windows.map((window) => (
+                    <div key={`${name}-drawer-${window.id}`} className={styles.quotaWindow}>
+                      <div className={styles.quotaWindowHeader}>
+                        <span>{window.label}</span>
+                        <strong>{formatQuotaPercent(window.remainingPercent)} 剩余</strong>
+                      </div>
+                      <div className={styles.quotaTrack}>
+                        <span style={{ width: `${Math.max(0, Math.min(100, window.remainingPercent ?? 0))}%` }} />
+                      </div>
+                      <small>重置 {window.resetLabel}</small>
+                    </div>
+                  ))
+                ) : (
+                  <div className={styles.quotaEmpty}>上游没有返回可展示的额度窗口</div>
+                )}
+              </div>
+            ) : quotaDetail?.status === 'error' && !permanentError ? (
+              <div className={styles.quotaError}>{quotaDetail.error || '额度查询失败'}</div>
+            ) : permanentError ? null : (
+              <div className={styles.quotaEmpty}>点击刷新额度后显示订阅、剩余额度和重置时间。</div>
+            )}
+          </div>
+
+          <div className={styles.drawerActions}>
+            <Button variant="secondary" onClick={() => openEditor(account)}>
+              <IconSettings size={15} />
+              设置
+            </Button>
+            {!permanentError && (
+              <Button
+                variant="secondary"
+                loading={reauthenticatingName === name}
+                onClick={() => handleReauthenticateAccount(account)}
+              >
+                <IconRefreshCw size={15} />
+                重认证
+              </Button>
+            )}
+            <Button
+              variant={account.disabled ? 'primary' : 'ghost'}
+              loading={togglingName === name}
+              onClick={() => handleToggleAccount(account)}
+            >
+              {account.disabled ? '启用' : '停用'}
+            </Button>
+            <Button variant="danger" loading={deletingName === name} onClick={() => handleDeleteAccount(account)}>
+              <IconTrash2 size={15} />
+              删除
+            </Button>
+          </div>
+        </aside>
+      </div>
+    );
+  };
 
   return (
     <div className={styles.dashboard}>
@@ -2777,8 +3021,20 @@ export function DashboardPage() {
                         : quotaRuntimeText(record);
 
                   return (
-                    <tr key={name || getAccountTitle(account)} className={account.disabled ? styles.accountTableDisabled : ''}>
-                      <td>
+                    <tr
+                      key={name || getAccountTitle(account)}
+                      className={`${styles.accountTableRow} ${account.disabled ? styles.accountTableDisabled : ''}`}
+                      tabIndex={0}
+                      onClick={() => {
+                        if (name) setDetailAccountName(name);
+                      }}
+                      onKeyDown={(event) => {
+                        if (!name || (event.key !== 'Enter' && event.key !== ' ')) return;
+                        event.preventDefault();
+                        setDetailAccountName(name);
+                      }}
+                    >
+                      <td onClick={(event) => event.stopPropagation()}>
                         <label className={styles.accountSelectCompact}>
                           <input
                             type="checkbox"
@@ -2822,7 +3078,7 @@ export function DashboardPage() {
                         <span className={styles.accountTableQuota}>{quotaText}</span>
                       </td>
                       <td>
-                        <div className={styles.accountTableActions}>
+                        <div className={styles.accountTableActions} onClick={(event) => event.stopPropagation()}>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -3096,7 +3352,10 @@ export function DashboardPage() {
         )}
       </section>
 
-      {batchForm && (
+      {detailAccount && renderPortal(renderAccountDetailDrawer(detailAccount))}
+
+      {batchForm &&
+        renderPortal(
         <div className={styles.modalBackdrop} role="presentation">
           <div className={styles.modal} role="dialog" aria-modal="true" aria-label="批量账号策略">
             <div className={styles.modalHeader}>
@@ -3216,9 +3475,10 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
-      )}
+        )}
 
-      {editingAccount && editForm && (
+      {editingAccount && editForm &&
+        renderPortal(
         <div className={styles.modalBackdrop} role="presentation">
           <div className={styles.modal} role="dialog" aria-modal="true" aria-label="账号策略设置">
             <div className={styles.modalHeader}>
@@ -3321,7 +3581,7 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
-      )}
+        )}
     </div>
   );
 }

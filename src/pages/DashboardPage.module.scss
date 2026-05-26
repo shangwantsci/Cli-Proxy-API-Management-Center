@@ -1015,6 +1015,16 @@
   }
 }
 
+.accountTableRow {
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary-color) 72%, transparent);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--primary-color) 7%, transparent);
+  }
+}
+
 .accountTableDisabled {
   opacity: 0.68;
 }
@@ -1087,6 +1097,87 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.drawerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2150;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 0.42);
+}
+
+.accountDetailDrawer {
+  width: min(560px, 100vw);
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  padding: $spacing-xl;
+  border-left: 1px solid var(--border-color);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-xl);
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+
+  h2 {
+    margin: 4px 0;
+    color: var(--text-primary);
+    font-size: 20px;
+    line-height: 1.25;
+    letter-spacing: 0;
+    word-break: break-word;
+  }
+
+  p {
+    margin: 0;
+    color: var(--text-tertiary);
+    font-family: $font-mono;
+    font-size: 12px;
+    line-height: 1.45;
+    word-break: break-all;
+  }
+}
+
+.drawerEyebrow {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.drawerStatusRow {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+
+  > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.drawerActions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  padding-top: $spacing-md;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-primary);
 }
 
 .accountCard {
