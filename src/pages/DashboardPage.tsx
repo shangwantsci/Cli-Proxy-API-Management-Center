@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { parseDocument } from 'yaml';
 import { Button } from '@/components/ui/Button';
@@ -33,7 +33,7 @@ import {
   type ClaudeSessionImportJob,
   type ProxyPoolEntry,
 } from '@/services/api';
-import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api/authFiles';
+import { authFilesApi, type AuthFileFieldsPatch, type ClaudeProbeJob } from '@/services/api/authFiles';
 import { oauthApi } from '@/services/api/oauth';
 import type { AuthFileItem } from '@/types/authFile';
 import type { ClaudeExtraUsage, ClaudeProfileResponse } from '@/types';
@@ -69,6 +69,7 @@ type AccountState =
 type AccountStateFilter = AccountState | 'all' | 'banned';
 type AccountProxyFilter = 'all' | 'withProxy' | 'defaultProxy' | 'direct';
 type AccountAuthFilter = 'all' | 'claude_code_cli' | 'claude_platform' | 'unknown';
+type AccountViewMode = 'table' | 'cards';
 
 interface AccountEditForm {
   proxyUrl: string;
@@ -1122,14 +1123,23 @@ export function DashboardPage() {
   const [accountStateFilter, setAccountStateFilter] = useState<AccountStateFilter>('all');
   const [accountProxyFilter, setAccountProxyFilter] = useState<AccountProxyFilter>('all');
   const [accountAuthFilter, setAccountAuthFilter] = useState<AccountAuthFilter>('all');
+  const [accountViewMode, setAccountViewMode] = useState<AccountViewMode>(() =>
+    typeof window === 'undefined'
+      ? 'table'
+      : window.localStorage.getItem('claude-account-view-mode') === 'cards'
+        ? 'cards'
+        : 'table'
+  );
   const [togglingName, setTogglingName] = useState('');
   const [deletingName, setDeletingName] = useState('');
   const [reauthenticatingName, setReauthenticatingName] = useState('');
   const [quotaByAccount, setQuotaByAccount] = useState<Record<string, AccountQuotaDetail>>({});
+  const [claudeProbeJob, setClaudeProbeJob] = useState<ClaudeProbeJob | null>(null);
   const [mimicryAudit, setMimicryAudit] = useState<ClaudeMimicryAuditResponse | null>(null);
   const [loadingMimicryAudit, setLoadingMimicryAudit] = useState(false);
   const [mimicryEvents, setMimicryEvents] = useState<ClaudeMimicryEventsResponse | null>(null);
   const [loadingMimicryEvents, setLoadingMimicryEvents] = useState(false);
+  const claudeProbeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadAccessSettings = useCallback(async () => {
     if (connectionStatus !== 'connected') {
@@ -1246,6 +1256,11 @@ export function DashboardPage() {
     loadAccessSettings();
   }, [loadAccessSettings]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('claude-account-view-mode', accountViewMode);
+  }, [accountViewMode]);
+
   const stats = useMemo(() => {
     const states = accounts.map((account) => {
       const name = String(account.name ?? '').trim();
@@ -1332,6 +1347,12 @@ export function DashboardPage() {
     accountStateFilter !== 'all' ||
     accountProxyFilter !== 'all' ||
     accountAuthFilter !== 'all';
+  const claudeProbeRunning =
+    claudeProbeJob?.status === 'running' || claudeProbeJob?.status === 'canceling';
+  const claudeProbePercent =
+    claudeProbeJob && claudeProbeJob.total > 0
+      ? Math.round((claudeProbeJob.completed / claudeProbeJob.total) * 100)
+      : 0;
 
   const operationsOverview = useMemo(() => {
     const stateCounts = accounts.reduce<Record<AccountState, number>>(
@@ -1675,6 +1696,83 @@ export function DashboardPage() {
     setAccountProxyFilter('all');
     setAccountAuthFilter('all');
   };
+
+  const clearClaudeProbeTimer = useCallback(() => {
+    if (!claudeProbeTimerRef.current) return;
+    clearTimeout(claudeProbeTimerRef.current);
+    claudeProbeTimerRef.current = null;
+  }, []);
+
+  const pollClaudeProbeJob = useCallback(
+    async (id: string) => {
+      clearClaudeProbeTimer();
+      try {
+        const job = await authFilesApi.getClaudeProbeJob(id);
+        setClaudeProbeJob(job);
+        if (job.status === 'running' || job.status === 'canceling') {
+          claudeProbeTimerRef.current = setTimeout(() => {
+            void pollClaudeProbeJob(id);
+          }, 1500);
+          return;
+        }
+        await loadAccounts();
+        const type = job.failed > 0 ? 'warning' : 'success';
+        showNotification(
+          `Claude 账号检测${job.status === 'canceled' ? '已取消' : '完成'}：可用 ${job.ok}，异常 ${job.failed}`,
+          type
+        );
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : '检测任务查询失败';
+        showNotification(message, 'error');
+      }
+    },
+    [clearClaudeProbeTimer, loadAccounts, showNotification]
+  );
+
+  useEffect(
+    () => () => {
+      clearClaudeProbeTimer();
+    },
+    [clearClaudeProbeTimer]
+  );
+
+  const startClaudeProbe = useCallback(
+    async (names?: string[]) => {
+      if (claudeProbeRunning) return;
+      const normalizedNames = Array.from(new Set((names || []).map((name) => name.trim()).filter(Boolean)));
+      clearClaudeProbeTimer();
+      try {
+        const job = await authFilesApi.startClaudeProbeJob(
+          normalizedNames.length > 0 ? { names: normalizedNames, concurrency: 8 } : { concurrency: 8 }
+        );
+        setClaudeProbeJob(job);
+        if (job.total === 0 || job.status !== 'running') {
+          await loadAccounts();
+          showNotification('没有需要检测的 Claude 账号', 'info');
+          return;
+        }
+        showNotification(`Claude 账号检测已开始：${job.total} 个账号`, 'info');
+        void pollClaudeProbeJob(job.id);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : '检测任务启动失败';
+        showNotification(message, 'error');
+      }
+    },
+    [claudeProbeRunning, clearClaudeProbeTimer, loadAccounts, pollClaudeProbeJob, showNotification]
+  );
+
+  const cancelClaudeProbe = useCallback(async () => {
+    if (!claudeProbeJob?.id) return;
+    try {
+      const job = await authFilesApi.cancelClaudeProbeJob(claudeProbeJob.id);
+      setClaudeProbeJob(job);
+      showNotification('Claude 账号检测正在取消', 'info');
+      void pollClaudeProbeJob(claudeProbeJob.id);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '取消检测失败';
+      showNotification(message, 'error');
+    }
+  }, [claudeProbeJob?.id, pollClaudeProbeJob, showNotification]);
 
   const openBatchEditor = () => {
     if (selectedNames.length === 0) {
@@ -2520,6 +2618,44 @@ export function DashboardPage() {
             </span>
           </div>
           <div>
+            <div className={styles.accountViewToggle} aria-label="账号池视图">
+              <button
+                type="button"
+                className={accountViewMode === 'table' ? styles.accountViewToggleActive : ''}
+                onClick={() => setAccountViewMode('table')}
+              >
+                列表
+              </button>
+              <button
+                type="button"
+                className={accountViewMode === 'cards' ? styles.accountViewToggleActive : ''}
+                onClick={() => setAccountViewMode('cards')}
+              >
+                卡片
+              </button>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={claudeProbeRunning}
+              onClick={() => void startClaudeProbe()}
+              disabled={connectionStatus !== 'connected' || accounts.length === 0 || claudeProbeRunning}
+            >
+              一键检测
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void startClaudeProbe(selectedNames)}
+              disabled={selectedNames.length === 0 || claudeProbeRunning}
+            >
+              检测选中
+            </Button>
+            {claudeProbeRunning && (
+              <Button variant="ghost" size="sm" onClick={() => void cancelClaudeProbe()}>
+                取消检测
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={selectAllAccounts} disabled={filteredAccountNames.length === 0}>
               {allFilteredAccountsSelected ? '取消筛选选择' : '选择筛选结果'}
             </Button>
@@ -2551,12 +2687,170 @@ export function DashboardPage() {
           </div>
         </div>
 
+        {claudeProbeJob && (
+          <div className={styles.accountProbePanel}>
+            <div className={styles.accountProbeHeader}>
+              <div>
+                <strong>Claude 账号可用性检测</strong>
+                <span>
+                  {claudeProbeRunning
+                    ? `正在检测 ${claudeProbeJob.completed}/${claudeProbeJob.total}`
+                    : `检测结束 ${claudeProbeJob.completed}/${claudeProbeJob.total}`}
+                </span>
+              </div>
+              <span>{claudeProbePercent}%</span>
+            </div>
+            <div className={styles.accountProbeTrack}>
+              <span style={{ width: `${claudeProbePercent}%` }} />
+            </div>
+            <div className={styles.accountProbeStats}>
+              <span>可用 {claudeProbeJob.ok}</span>
+              <span>异常 {claudeProbeJob.failed}</span>
+              <span>封禁/停用 {claudeProbeJob.disabled}</span>
+              <span>认证失效 {claudeProbeJob.auth_expired}</span>
+              <span>限额冷却 {claudeProbeJob.quota_cooldown}</span>
+              <span>429 {claudeProbeJob.rate_limited}</span>
+            </div>
+            {(claudeProbeJob.results || []).filter((item) => item.status !== 'ok').length > 0 && (
+              <div className={styles.accountProbeProblems}>
+                {(claudeProbeJob.results || [])
+                  .filter((item) => item.status !== 'ok')
+                  .slice(0, 5)
+                  .map((item) => (
+                    <span key={`${item.name}-${item.status}`}>
+                      <strong>{item.name}</strong>
+                      {item.status}
+                      {item.message ? ` · ${item.message}` : ''}
+                    </span>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <div className={styles.emptyState}>正在加载 Claude 账号池...</div>
         ) : accounts.length === 0 ? (
           <div className={styles.emptyState}>还没有 Claude 账号。先用 OAuth 或 Cookie 换授权导入一个账号。</div>
         ) : filteredAccounts.length === 0 ? (
           <div className={styles.emptyState}>没有符合当前筛选条件的 Claude 账号。</div>
+        ) : accountViewMode === 'table' ? (
+          <div className={styles.accountTableShell}>
+            <table className={styles.accountTable}>
+              <thead>
+                <tr>
+                  <th>选择</th>
+                  <th>账号</th>
+                  <th>状态</th>
+                  <th>RPM</th>
+                  <th>会话</th>
+                  <th>24h 质量</th>
+                  <th>代理</th>
+                  <th>认证</th>
+                  <th>最近使用</th>
+                  <th>有效期</th>
+                  <th>额度</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAccounts.map((account) => {
+                  const record = account as Record<string, unknown>;
+                  const name = String(account.name ?? '').trim();
+                  const quotaDetail = name ? quotaByAccount[name] : undefined;
+                  const quotaCoolingWindow = quotaDetailCoolingWindow(quotaDetail);
+                  const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
+                  const proxyUrl = readString(record, ['proxy_url', 'proxyUrl']);
+                  const runtime = readRuntimeStats(record);
+                  const quality = readQuality24h(record);
+                  const qualityRate =
+                    quality.requests > 0 ? Math.round((quality.success / quality.requests) * 100) : 100;
+                  const permanentError = claudePermanentAccountError(record);
+                  const quotaText =
+                    quotaDetail?.status === 'success'
+                      ? quotaDetail.windows
+                          .slice(0, 2)
+                          .map((window) => `${window.label} ${formatQuotaPercent(window.remainingPercent)}`)
+                          .join(' / ') || '无窗口'
+                      : quotaDetail?.status === 'error'
+                        ? '刷新失败'
+                        : quotaRuntimeText(record);
+
+                  return (
+                    <tr key={name || getAccountTitle(account)} className={account.disabled ? styles.accountTableDisabled : ''}>
+                      <td>
+                        <label className={styles.accountSelectCompact}>
+                          <input
+                            type="checkbox"
+                            checked={selectedNameSet.has(name)}
+                            onChange={(event) => toggleSelectedAccount(name, event.target.checked)}
+                          />
+                        </label>
+                      </td>
+                      <td>
+                        <div className={styles.accountTableIdentity}>
+                          <strong>{getAccountTitle(account)}</strong>
+                          <span>{name}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`${styles.statusPill} ${styles[state]}`}>
+                          {accountStateLabel(state)}
+                        </span>
+                      </td>
+                      <td className={styles.accountTableMetric}>
+                        {runtime.currentRpm}/{runtime.rpmLimit || '不限'}
+                      </td>
+                      <td className={styles.accountTableMetric}>
+                        {runtime.activeSessions}/{runtime.maxSessions || '不限'}
+                      </td>
+                      <td>
+                        <span className={styles.accountTableStack}>
+                          <strong>{quality.requests} 请求</strong>
+                          <span>{qualityRate}% / 429 {quality.rateLimited}</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span className={proxyUrl ? styles.accountTableProxy : styles.accountTableMuted}>
+                          {proxyUrl || '默认'}
+                        </span>
+                      </td>
+                      <td>{claudeAuthMethodText(record)}</td>
+                      <td>{formatDate(runtime.lastUsedAt)}</td>
+                      <td>{formatDate(record.expires_at ?? record.expiresAt)}</td>
+                      <td>
+                        <span className={styles.accountTableQuota}>{quotaText}</span>
+                      </td>
+                      <td>
+                        <div className={styles.accountTableActions}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={quotaDetail?.status === 'loading'}
+                            disabled={Boolean(permanentError)}
+                            onClick={() => handleRefreshAccountQuota(account)}
+                          >
+                            额度
+                          </Button>
+                          <Button variant="secondary" size="sm" onClick={() => openEditor(account)}>
+                            设置
+                          </Button>
+                          <Button
+                            variant={account.disabled ? 'primary' : 'ghost'}
+                            size="sm"
+                            loading={togglingName === name}
+                            onClick={() => handleToggleAccount(account)}
+                          >
+                            {account.disabled ? '启用' : '停用'}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className={styles.accountGrid}>
             {filteredAccounts.map((account) => {

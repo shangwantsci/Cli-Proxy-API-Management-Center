@@ -866,6 +866,229 @@
   }
 }
 
+.accountViewToggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(48px, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+
+  button {
+    min-height: 30px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: calc($radius-md - 3px);
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 800;
+  }
+}
+
+.accountViewToggleActive {
+  color: var(--text-primary) !important;
+  background: var(--bg-tertiary) !important;
+}
+
+.accountProbePanel {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+  padding: $spacing-md;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 28%, var(--border-color));
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--bg-secondary) 74%, transparent);
+}
+
+.accountProbeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+  }
+}
+
+.accountProbeTrack {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--primary-color);
+    transition: width 180ms ease;
+  }
+}
+
+.accountProbeStats,
+.accountProbeProblems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: $radius-sm;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    font-size: 12px;
+  }
+}
+
+.accountProbeProblems span {
+  color: $error-color;
+  border: 1px solid rgba($error-color, 0.24);
+  background: rgba($error-color, 0.08);
+}
+
+.accountTableShell {
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
+}
+
+.accountTable {
+  width: 100%;
+  min-width: 1280px;
+  border-collapse: collapse;
+  table-layout: fixed;
+
+  th,
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    color: var(--text-tertiary);
+    background: var(--bg-secondary);
+    font-size: 11px;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  td {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  tbody tr:hover {
+    background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+.accountTableDisabled {
+  opacity: 0.68;
+}
+
+.accountSelectCompact {
+  display: inline-flex;
+  align-items: center;
+
+  input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--primary-color);
+  }
+}
+
+.accountTableIdentity,
+.accountTableStack {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+
+  strong {
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.accountTableMetric {
+  color: var(--text-primary);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.accountTableProxy,
+.accountTableMuted,
+.accountTableQuota {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountTableProxy,
+.accountTableQuota {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.accountTableMuted {
+  color: var(--text-tertiary);
+}
+
+.accountTableActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .accountCard {
   display: flex;
   flex-direction: column;
