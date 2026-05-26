@@ -18,6 +18,43 @@ type ClaudeAuthReauthResponse = {
   expires_at?: string;
   account?: AuthFileEntry;
 };
+export type ClaudeProbeResult = {
+  name: string;
+  id?: string;
+  auth_index?: string;
+  email?: string;
+  status: string;
+  reason?: string;
+  message?: string;
+  profile_status?: number;
+  usage_status?: number;
+  disabled?: boolean;
+  unavailable?: boolean;
+  started_at?: string;
+  finished_at?: string;
+};
+export type ClaudeProbeJob = {
+  id: string;
+  status: string;
+  created_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  total: number;
+  completed: number;
+  ok: number;
+  failed: number;
+  disabled: number;
+  auth_expired: number;
+  quota_cooldown: number;
+  rate_limited: number;
+  error?: string;
+  results?: ClaudeProbeResult[];
+};
+export type ClaudeProbeJobRequest = {
+  names?: string[];
+  include_disabled?: boolean;
+  concurrency?: number;
+};
 export type AuthFileFieldsPatch = {
   prefix?: string;
   proxy_url?: string;
@@ -433,6 +470,15 @@ export const authFilesApi = {
 
   reauthenticateClaude: (name: string) =>
     apiClient.post<ClaudeAuthReauthResponse>('/auth-files/reauth', { name }),
+
+  startClaudeProbeJob: (payload: ClaudeProbeJobRequest = {}) =>
+    apiClient.post<ClaudeProbeJob>('/auth-files/claude-probe-jobs', payload),
+
+  getClaudeProbeJob: (id: string) =>
+    apiClient.get<ClaudeProbeJob>(`/auth-files/claude-probe-jobs/${encodeURIComponent(id)}`),
+
+  cancelClaudeProbeJob: (id: string) =>
+    apiClient.post<ClaudeProbeJob>(`/auth-files/claude-probe-jobs/${encodeURIComponent(id)}/cancel`),
 
   uploadFiles: async (files: File[]): Promise<AuthFileBatchUploadResult> => {
     const requestedNames = files.map((file) => file.name);

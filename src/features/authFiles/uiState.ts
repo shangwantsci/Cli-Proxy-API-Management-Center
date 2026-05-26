@@ -7,11 +7,17 @@ export type AuthFilesUiState = {
   problemOnly?: boolean;
   disabledOnly?: boolean;
   compactMode?: boolean;
+  accountViewMode?: 'table' | 'cards';
+  accountStatusFilter?: string;
+  subscriptionFilter?: string;
+  proxyFilter?: string;
+  lowQuotaOnly?: boolean;
   search?: string;
   page?: number;
   pageSize?: number;
   regularPageSize?: number;
   compactPageSize?: number;
+  tablePageSize?: number;
   sortMode?: AuthFilesSortMode;
 };
 

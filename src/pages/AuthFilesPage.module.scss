@@ -78,12 +78,169 @@
   margin-bottom: $spacing-md;
 }
 
+.claudeProbePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  margin-bottom: $spacing-md;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 24%, var(--border-color));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+}
+
+.claudeProbeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.claudeProbeTitle {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.claudeProbeSubtitle {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.claudeProbeProgress {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-tertiary) 85%, transparent);
+}
+
+.claudeProbeProgressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary-color);
+  transition: width 180ms ease;
+}
+
+.claudeProbeStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
+.claudeProbeProblems {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.claudeProbeProblem {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(86px, auto) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 28px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger-color) 8%, var(--bg-primary));
+  color: var(--text-secondary);
+  font-size: 12px;
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
+}
+
+.claudeProbeProblemName,
+.claudeProbeProblemMessage {
+  min-width: 0;
+  @include text-ellipsis;
+}
+
+.claudeProbeProblemName {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.claudeProbeProblemStatus {
+  color: var(--danger-color);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.claudeProbeMore {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
 // 筛选区域
 .filterSection {
   display: flex;
   flex-direction: column;
   gap: $spacing-md;
   margin-bottom: $spacing-lg;
+}
+
+.accountOpsStrip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+
+  @include tablet {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
+}
+
+.accountOpsCard {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 62%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary) 62%, transparent);
+
+  span {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  small {
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    @include text-ellipsis;
+  }
 }
 
 .filterRail {
@@ -251,9 +408,8 @@
 .filterControls {
   display: grid;
   grid-template-columns:
-    minmax(260px, 1fr)
-    minmax(108px, 0.35fr)
-    minmax(148px, 0.45fr);
+    minmax(260px, 1.4fr)
+    repeat(5, minmax(126px, 0.55fr));
   gap: 12px;
   align-items: flex-end;
 
@@ -306,7 +462,7 @@
 
 .filterToggleGroup {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   min-height: 42px;
 
@@ -374,6 +530,419 @@
     border-color: var(--primary-color);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 12%, transparent);
   }
+}
+
+.accountViewSwitch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-height: 42px;
+  align-items: stretch;
+
+  :global(.btn) {
+    width: 100%;
+    min-width: 0;
+    height: 42px;
+  }
+}
+
+.accountTableShell {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-color) 68%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-primary) 78%, transparent);
+}
+
+.accountTableScroll {
+  overflow: auto;
+  max-width: 100%;
+}
+
+.accountTable {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: collapse;
+  table-layout: fixed;
+
+  th,
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 48%, transparent);
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    color: var(--text-tertiary);
+    background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  td {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  tbody tr {
+    transition: background-color $transition-fast;
+
+    &:hover {
+      background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+    }
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.accountTableRowDisabled {
+  opacity: 0.68;
+}
+
+.accountTableSelectCell {
+  width: 56px;
+}
+
+.accountTableActionsCell {
+  width: 230px;
+}
+
+.accountIdentity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.accountAvatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 64%, transparent);
+  background: color-mix(in srgb, var(--bg-secondary) 76%, transparent);
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.accountAvatarIcon {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+}
+
+.accountIdentityText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.accountName {
+  color: var(--text-primary);
+  font-weight: 800;
+  line-height: 1.2;
+  @include text-ellipsis;
+}
+
+.accountFileName {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.2;
+  @include text-ellipsis;
+}
+
+.accountPlanBadge,
+.accountStatusBadge,
+.accountQuotaChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.accountPlanBadge {
+  color: color-mix(in srgb, #e0aa14 78%, var(--text-primary));
+  background: color-mix(in srgb, #e0aa14 14%, transparent);
+  border: 1px solid color-mix(in srgb, #e0aa14 28%, transparent);
+}
+
+.accountStatusBadge_good,
+.accountQuotaChip_good {
+  color: var(--success-badge-text, #065f46);
+  background: color-mix(in srgb, var(--success-badge-bg, #d1fae5) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success-badge-border, #6ee7b7) 70%, transparent);
+}
+
+.accountStatusBadge_warning,
+.accountQuotaChip_warning {
+  color: var(--warning-text);
+  background: color-mix(in srgb, var(--warning-bg) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning-border) 70%, transparent);
+}
+
+.accountStatusBadge_danger,
+.accountQuotaChip_danger {
+  color: var(--danger-color);
+  background: color-mix(in srgb, var(--danger-color) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger-color) 38%, transparent);
+}
+
+.accountStatusBadge_muted,
+.accountQuotaChip_muted {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-tertiary) 76%, transparent);
+  border: 1px solid var(--border-color);
+}
+
+.accountMetricCell {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.accountQuality {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+
+  span {
+    @include text-ellipsis;
+  }
+}
+
+.accountProxyValue,
+.accountMutedValue {
+  display: block;
+  min-width: 0;
+  @include text-ellipsis;
+}
+
+.accountProxyValue {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.accountMutedValue {
+  color: var(--text-tertiary);
+}
+
+.accountTableActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.accountIconButton:global(.btn.btn-sm) {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  border-radius: 7px;
+
+  > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.accountDrawerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2050;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(2px);
+}
+
+.accountDrawer {
+  width: min(520px, 100vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+  background: var(--bg-primary);
+  box-shadow: -18px 0 40px -28px rgba(0, 0, 0, 0.45);
+}
+
+.accountDrawerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 64%, transparent);
+
+  h2 {
+    margin: 4px 0 4px;
+    color: var(--text-primary);
+    font-size: 18px;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+
+  p {
+    margin: 0;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    word-break: break-all;
+  }
+}
+
+.accountDrawerEyebrow {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.accountDrawerBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px 20px;
+}
+
+.accountDrawerSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 66%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-secondary) 54%, transparent);
+}
+
+.accountDrawerSectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+
+  p {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+}
+
+.accountDrawerSectionTitle {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.accountDrawerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
+
+  > div {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 10px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
+  }
+
+  span {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+}
+
+.accountDrawerQuotaList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.accountDrawerQuotaRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
+
+  span {
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  small {
+    grid-column: 1 / -1;
+    color: var(--text-tertiary);
+    font-size: 11px;
+  }
+}
+
+.accountDrawerError,
+.accountDrawerEmpty {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.accountDrawerError {
+  color: var(--danger-color);
+  background: color-mix(in srgb, var(--danger-color) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger-color) 34%, transparent);
+}
+
+.accountDrawerEmpty {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
+}
+
+.accountDrawerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 // 卡片网格

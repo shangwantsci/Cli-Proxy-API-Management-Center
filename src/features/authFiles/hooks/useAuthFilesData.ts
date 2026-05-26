@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObj
 import { useTranslation } from 'react-i18next';
 import { authFilesApi } from '@/services/api';
 import { apiClient } from '@/services/api/client';
+import type { ClaudeProbeJob } from '@/services/api/authFiles';
 import { useNotificationStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
 import { formatFileSize } from '@/utils/format';
@@ -59,6 +60,8 @@ export type UseAuthFilesDataResult = {
   deletingAll: boolean;
   statusUpdating: Record<string, boolean>;
   batchStatusUpdating: boolean;
+  claudeProbeJob: ClaudeProbeJob | null;
+  claudeProbeRunning: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
   loadFiles: () => Promise<void>;
   handleUploadClick: () => void;
@@ -74,6 +77,9 @@ export type UseAuthFilesDataResult = {
   batchDownload: (names: string[]) => Promise<void>;
   batchSetStatus: (names: string[], enabled: boolean) => Promise<void>;
   batchDelete: (names: string[]) => void;
+  probeClaudeAccounts: (names?: string[]) => Promise<void>;
+  cancelClaudeProbe: () => Promise<void>;
+  refreshClaudeHealthForFiles: (names: string[]) => Promise<void>;
 };
 
 export function useAuthFilesData(): UseAuthFilesDataResult {
@@ -89,10 +95,15 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [claudeProbeJob, setClaudeProbeJob] = useState<ClaudeProbeJob | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const batchStatusPendingRef = useRef(false);
+  const claudeProbeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const claudeProbeJobIdRef = useRef<string | null>(null);
   const selectionCount = selectedFiles.size;
+  const claudeProbeRunning =
+    claudeProbeJob?.status === 'running' || claudeProbeJob?.status === 'canceling';
   const toggleSelect = useCallback((name: string) => {
     setSelectedFiles((prev) => {
       const next = new Set(prev);
@@ -204,6 +215,112 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       setLoading(false);
     }
   }, [t]);
+
+  const refreshClaudeHealthForFiles = useCallback(async (names: string[]) => {
+    const targetNames = Array.from(
+      new Set(names.map((name) => name.trim()).filter(Boolean))
+    );
+    if (targetNames.length === 0) return;
+
+    const targetNameSet = new Set(targetNames);
+    const healthAccounts = await authFilesApi.listClaudeHealth();
+    const healthByKey = new Map<string, AuthFileItem>();
+    healthAccounts.forEach((account) => {
+      authFileMergeKeys(account).forEach((key) => healthByKey.set(key, account));
+    });
+
+    setFiles((prev) =>
+      prev.map((file) => {
+        if (!targetNameSet.has(file.name)) return file;
+        const health = authFileMergeKeys(file)
+          .map((key) => healthByKey.get(key))
+          .find(Boolean);
+        return health ? { ...file, ...health, name: file.name || health.name } : file;
+      })
+    );
+  }, []);
+
+  const clearClaudeProbeTimer = useCallback(() => {
+    if (claudeProbeTimerRef.current) {
+      clearTimeout(claudeProbeTimerRef.current);
+      claudeProbeTimerRef.current = null;
+    }
+  }, []);
+
+  const pollClaudeProbeJob = useCallback(
+    async (id: string) => {
+      clearClaudeProbeTimer();
+      try {
+        const job = await authFilesApi.getClaudeProbeJob(id);
+        if (claudeProbeJobIdRef.current !== id) return;
+        setClaudeProbeJob(job);
+
+        if (job.status === 'running' || job.status === 'canceling') {
+          claudeProbeTimerRef.current = setTimeout(() => {
+            void pollClaudeProbeJob(id);
+          }, 1500);
+          return;
+        }
+
+        await loadFiles();
+        const summary = `完成 ${job.completed}/${job.total}，可用 ${job.ok}，异常 ${job.failed}`;
+        showNotification(`Claude 账号检测${job.status === 'canceled' ? '已取消' : '完成'}：${summary}`, job.failed > 0 ? 'warning' : 'success');
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        showNotification(`Claude 账号检测失败: ${errorMessage}`, 'error');
+      }
+    },
+    [clearClaudeProbeTimer, loadFiles, showNotification]
+  );
+
+  useEffect(
+    () => () => {
+      clearClaudeProbeTimer();
+    },
+    [clearClaudeProbeTimer]
+  );
+
+  const probeClaudeAccounts = useCallback(
+    async (names?: string[]) => {
+      if (claudeProbeRunning) return;
+      const normalizedNames = Array.isArray(names)
+        ? Array.from(new Set(names.map((name) => name.trim()).filter(Boolean)))
+        : [];
+      clearClaudeProbeTimer();
+      try {
+        const job = await authFilesApi.startClaudeProbeJob(
+          normalizedNames.length > 0 ? { names: normalizedNames, concurrency: 8 } : { concurrency: 8 }
+        );
+        claudeProbeJobIdRef.current = job.id;
+        setClaudeProbeJob(job);
+        if (job.total === 0 || job.status !== 'running') {
+          await loadFiles();
+          showNotification('没有需要检测的 Claude 账号', 'info');
+          return;
+        }
+        showNotification(`Claude 账号检测已开始：${job.total} 个账号`, 'info');
+        void pollClaudeProbeJob(job.id);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        showNotification(`Claude 账号检测启动失败: ${errorMessage}`, 'error');
+      }
+    },
+    [claudeProbeRunning, clearClaudeProbeTimer, loadFiles, pollClaudeProbeJob, showNotification]
+  );
+
+  const cancelClaudeProbe = useCallback(async () => {
+    const id = claudeProbeJobIdRef.current;
+    if (!id) return;
+    try {
+      const job = await authFilesApi.cancelClaudeProbeJob(id);
+      setClaudeProbeJob(job);
+      showNotification('Claude 账号检测正在取消', 'info');
+      void pollClaudeProbeJob(id);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      showNotification(`取消检测失败: ${errorMessage}`, 'error');
+    }
+  }, [pollClaudeProbeJob, showNotification]);
 
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -677,6 +794,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     deletingAll,
     statusUpdating,
     batchStatusUpdating,
+    claudeProbeJob,
+    claudeProbeRunning,
     fileInputRef,
     loadFiles,
     handleUploadClick,
@@ -692,5 +811,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     batchDownload,
     batchSetStatus,
     batchDelete,
+    probeClaudeAccounts,
+    cancelClaudeProbe,
+    refreshClaudeHealthForFiles,
   };
 }
