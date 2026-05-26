@@ -25,6 +25,7 @@
 - Claude 账号池列表/卡片视图
 - 账号搜索、状态筛选、代理筛选、认证方式筛选
 - 批量选择、批量策略、批量启用/停用
+- 批量删除选中账号
 - 单账号详情抽屉
 - 单账号额度刷新
 - 单账号设置、重认证、启用/停用、删除
@@ -41,6 +42,8 @@
 - `handleRefreshAccountQuota(account)`：单账号额度刷新。生产要求是局部更新，不允许再调用 `loadAccounts()`。
 - `detailAccountName` / `detailAccount`：列表行点击后打开右侧详情抽屉。
 - `openEditor(account)`：打开账号设置弹窗。
+- `selectAllAccounts()`：切换“当前筛选结果”的全选状态；表头 checkbox 和工具条按钮共用它。
+- `handleBatchDeleteAccounts()`：批量删除当前选中账号，必须保留二次确认。
 - `renderPortal(...)`：把弹窗/抽屉挂到 `document.body`。Portal 指 React 把组件渲染到当前组件树之外的 DOM 节点，避免长页面滚动容器影响 fixed 定位。
 - `ACCOUNT_VIEW_MODE_STORAGE_KEY`：账号池视图偏好。升级默认视图时要变更这个 key，否则用户浏览器里的旧偏好会继续把页面锁到旧视图。
 
@@ -116,6 +119,8 @@ npm run build
 - 账号池默认是列表视图；切换卡片后刷新页面能保留偏好。
 - 点击列表行能打开右侧详情抽屉。
 - 点击 checkbox 不打开抽屉。
+- 表头 checkbox 能一次性选择或取消当前筛选结果。
+- 选中账号后能看到“批量删除”，点击时必须出现二次确认。
 - 点击“额度”只刷新该账号额度，不出现整池 loading 或滚动位置跳动。
 - 点击“设置”时弹窗出现在当前视口中央，不需要滚动寻找。
 - 关闭设置弹窗后，详情抽屉仍能正常关闭或继续操作。

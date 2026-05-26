@@ -1372,6 +1372,7 @@ export function DashboardPage() {
   const allFilteredAccountsSelected =
     filteredAccountNames.length > 0 &&
     filteredAccountNames.every((name) => selectedNameSet.has(name));
+  const someFilteredAccountsSelected = filteredAccountNames.some((name) => selectedNameSet.has(name));
   const hasAccountFilters =
     accountSearch.trim() !== '' ||
     accountStateFilter !== 'all' ||
@@ -1914,6 +1915,53 @@ export function DashboardPage() {
       setSavingBatch(false);
     }
     showNotification(`批量${action}完成：成功 ${success}/${selectedNames.length} 个`, success === selectedNames.length ? 'success' : 'error');
+  };
+
+  const handleBatchDeleteAccounts = async () => {
+    const names = Array.from(new Set(selectedNames.map((name) => name.trim()).filter(Boolean)));
+    if (names.length === 0) {
+      showNotification('请先选择要删除的账号', 'error');
+      return;
+    }
+    if (
+      !window.confirm(
+        `确定要永久删除 ${names.length} 个 Claude 账号吗？此操作会移除账号授权文件，不能通过启用恢复。`
+      )
+    ) {
+      return;
+    }
+
+    setSavingBatch(true);
+    try {
+      const result = await authFilesApi.deleteFiles(names);
+      const failedNames = new Set(result.failed.map((item) => item.name).filter(Boolean));
+      const deletedNames = new Set(
+        result.files.length > 0 ? result.files : names.filter((name) => !failedNames.has(name))
+      );
+      const deletedCount = deletedNames.size;
+      setQuotaByAccount((prev) => {
+        const next = { ...prev };
+        deletedNames.forEach((name) => {
+          delete next[name];
+        });
+        return next;
+      });
+      setSelectedNames((current) => current.filter((name) => !deletedNames.has(name)));
+      if (detailAccountName && deletedNames.has(detailAccountName)) {
+        setDetailAccountName(null);
+      }
+      await loadAccounts();
+      if (result.failed.length > 0) {
+        showNotification(`批量删除完成：成功 ${deletedCount} 个，失败 ${result.failed.length} 个`, 'error');
+        return;
+      }
+      showNotification(`批量删除完成：${deletedCount} 个账号已删除`, 'success');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '批量删除失败';
+      showNotification(message, 'error');
+    } finally {
+      setSavingBatch(false);
+    }
   };
 
   const handleToggleAccount = async (account: AuthFileItem) => {
@@ -2901,7 +2949,7 @@ export function DashboardPage() {
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={selectAllAccounts} disabled={filteredAccountNames.length === 0}>
-              {allFilteredAccountsSelected ? '取消筛选选择' : '选择筛选结果'}
+              {allFilteredAccountsSelected ? '取消全选' : `全选当前筛选 ${filteredAccountNames.length}`}
             </Button>
             <Button
               variant="secondary"
@@ -2927,6 +2975,15 @@ export function DashboardPage() {
               disabled={selectedNames.length === 0 || savingBatch}
             >
               批量停用
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => void handleBatchDeleteAccounts()}
+              disabled={selectedNames.length === 0 || savingBatch}
+            >
+              <IconTrash2 size={14} />
+              批量删除
             </Button>
           </div>
         </div>
@@ -2983,7 +3040,23 @@ export function DashboardPage() {
             <table className={styles.accountTable}>
               <thead>
                 <tr>
-                  <th>选择</th>
+                  <th>
+                    <label className={styles.accountSelectCompact} title="全选当前筛选结果">
+                      <input
+                        type="checkbox"
+                        checked={allFilteredAccountsSelected}
+                        ref={(input) => {
+                          if (input) {
+                            input.indeterminate =
+                              someFilteredAccountsSelected && !allFilteredAccountsSelected;
+                          }
+                        }}
+                        onChange={selectAllAccounts}
+                        disabled={filteredAccountNames.length === 0}
+                        aria-label="全选当前筛选结果"
+                      />
+                    </label>
+                  </th>
                   <th>账号</th>
                   <th>状态</th>
                   <th>RPM</th>
