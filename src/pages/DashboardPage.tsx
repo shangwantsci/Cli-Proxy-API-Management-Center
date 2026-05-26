@@ -1772,6 +1772,7 @@ export function DashboardPage() {
       if (claudeProbeRunning) return;
       const normalizedNames = Array.from(new Set((names || []).map((name) => name.trim()).filter(Boolean)));
       clearClaudeProbeTimer();
+      setClaudeProbeJob(null);
       try {
         const job = await authFilesApi.startClaudeProbeJob(
           normalizedNames.length > 0 ? { names: normalizedNames, concurrency: 8 } : { concurrency: 8 }
@@ -2930,7 +2931,7 @@ export function DashboardPage() {
               variant="secondary"
               size="sm"
               loading={claudeProbeRunning}
-              onClick={() => void startClaudeProbe()}
+              onClick={() => void startClaudeProbe(accounts.map(getAccountName).filter(Boolean))}
               disabled={connectionStatus !== 'connected' || accounts.length === 0 || claudeProbeRunning}
             >
               一键检测
