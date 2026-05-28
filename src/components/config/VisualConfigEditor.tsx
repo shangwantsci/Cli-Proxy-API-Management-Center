@@ -238,7 +238,7 @@ export function VisualConfigEditor({
     () => [
       {
         id: 'cloak',
-        title: 'Claude Code 伪装',
+        title: 'CLI 伪装',
         icon: IconBot,
         errorCount: countErrors(['claudeMimicryGuardEventsLimit']),
       },
@@ -398,8 +398,8 @@ export function VisualConfigEditor({
     <div className={styles.visualEditor}>
       <div className={styles.strategyHero}>
         <div className={styles.strategyHeroCopy}>
-          <span className={styles.overviewPill}>Claude 账号池策略</span>
-          <h2 className={styles.strategyHeroTitle}>把流量统一整理成更像 Claude Code 的请求</h2>
+          <span className={styles.overviewPill}>账号池策略</span>
+          <h2 className={styles.strategyHeroTitle}>把流量统一整理成更像 CLI 的请求</h2>
           <p className={styles.strategyHeroText}>
             这里集中调整全局伪装指纹、缓存命中、失败重试和账号切换。每个账号的代理 IP、
             启用状态和账号级伪装开关仍在账号池页面单独管理。
@@ -497,13 +497,13 @@ export function VisualConfigEditor({
             }}
             indexLabel="01"
             icon={<IconBot size={16} />}
-            title="Claude Code 伪装"
-            description="全局默认 Header 指纹，用于 OAuth 账号和 Claude Code 兼容请求。"
+            title="CLI 伪装"
+            description="全局默认 Header 指纹，用于 OAuth 账号和 CLI 兼容请求。"
           >
             <SectionStack>
               <StatusList
                 items={[
-                  { label: 'Claude CLI User-Agent', active: Boolean(values.claudeHeaderUserAgent) },
+                  { label: 'CLI User-Agent', active: Boolean(values.claudeHeaderUserAgent) },
                   {
                     label: 'Package/Runtime 指纹',
                     active: Boolean(
@@ -614,7 +614,7 @@ export function VisualConfigEditor({
               <SectionGrid>
                 <ToggleRow
                   title="会话粘性路由"
-                  description="同一用户或会话优先绑定到同一个 Claude 账号，提高上下文与缓存复用。"
+                  description="同一用户或会话优先绑定到同一个账号，提高上下文与缓存复用。"
                   checked={values.routingSessionAffinity}
                   disabled={disabled}
                   onChange={(routingSessionAffinity) => onChange({ routingSessionAffinity })}
@@ -643,7 +643,7 @@ export function VisualConfigEditor({
                 />
                 <ToggleRow
                   title="扣除伪装注入 Token"
-                  description="返回给 NewAPI/客户的 usage 只统计用户原始请求；账号限额和健康判断仍按 Claude 上游 raw usage 计算。"
+                  description="返回给 NewAPI/客户的 usage 只统计用户原始请求；账号限额和健康判断仍按上游 raw usage 计算。"
                   checked={values.claudeBillableUsageEnabled}
                   disabled={disabled}
                   onChange={(claudeBillableUsageEnabled) =>
@@ -828,7 +828,7 @@ export function VisualConfigEditor({
                 <div>匹配模型/前缀</div>
                 <div>{affinityEnabled ? '优先会话绑定' : '按池策略选择'}</div>
                 <div>{coolingEnabled ? '跳过冷却账号' : '不做冷却隔离'}</div>
-                <div>Claude 上游</div>
+                <div>上游服务</div>
               </div>
             </SectionStack>
           </ConfigSection>
@@ -879,7 +879,7 @@ export function VisualConfigEditor({
                 <FieldShell
                   label="图像请求处理"
                   labelId={disableImageGenerationLabelId}
-                  hint="账号池专注 Claude 文本与工具调用时，可限制图像入口。"
+                  hint="账号池专注文本与工具调用时，可限制图像入口。"
                   hintId={disableImageGenerationHintId}
                 >
                   <Select
@@ -900,14 +900,14 @@ export function VisualConfigEditor({
               </SectionGrid>
               <SectionSubsection
                 title="高级请求改写"
-                description="复杂 payload 默认值、覆盖与过滤仍保留在 YAML 源码中，策略页只展示 Claude 反代需要快速调整的入口。"
+                description="复杂 payload 默认值、覆盖与过滤仍保留在 YAML 源码中，策略页只展示反代需要快速调整的入口。"
               >
                 <StatusList
                   items={[
-                    { label: '通用 Chat/Responses 转 Claude', active: true },
-                    { label: '第三方聊天格式转 Claude', active: true },
-                    { label: 'Claude 原生透传', active: true },
-                    { label: '工具名按 Claude Code 归一化', active: true },
+                    { label: '通用 Chat/Responses 转上游格式', active: true },
+                    { label: '第三方聊天格式转上游格式', active: true },
+                    { label: '上游原生透传', active: true },
+                    { label: '工具名按 CLI 归一化', active: true },
                   ]}
                 />
               </SectionSubsection>

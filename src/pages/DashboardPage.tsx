@@ -53,6 +53,7 @@ import {
   normalizeUsageTotal,
   statusBarDataFromRecentRequests,
 } from '@/utils/recentRequests';
+import { sanitizeSensitiveText } from '@/utils/displaySanitizer';
 import styles from './DashboardPage.module.scss';
 
 type AccountState =
@@ -123,8 +124,8 @@ interface AccountQuotaDetail {
 }
 
 const CLOAK_MODE_OPTIONS = [
-  { value: 'always', label: '始终伪装为 Claude Code' },
-  { value: 'auto', label: '自动伪装：真实 Claude Code 不重写' },
+  { value: 'always', label: '始终使用 CLI 形态' },
+  { value: 'auto', label: '自动伪装：真实 CLI 不重写' },
   { value: 'never', label: '关闭伪装' },
 ];
 
@@ -151,7 +152,7 @@ const ACCOUNT_PROXY_FILTER_OPTIONS = [
 
 const ACCOUNT_AUTH_FILTER_OPTIONS = [
   { value: 'all', label: '全部认证' },
-  { value: 'claude_code_cli', label: 'Claude Code CLI OAuth' },
+  { value: 'claude_code_cli', label: 'CLI OAuth' },
   { value: 'claude_platform', label: 'Platform OAuth' },
   { value: 'unknown', label: '未知认证' },
 ];
@@ -331,10 +332,10 @@ function formatDate(value: unknown): string {
 
 function getAccountTitle(account: AuthFileItem): string {
   const record = account as Record<string, unknown>;
-  return (
+  return sanitizeSensitiveText(
     readString(record, ['email', 'account', 'label']) ||
     readString(record, ['name']) ||
-    'Claude 账号'
+    '服务账号'
   );
 }
 
@@ -371,23 +372,24 @@ function claudePermanentAccountError(record: Record<string, unknown>): { code: s
     parts.find((part) => part && !part.trim().startsWith('{') && !part.includes('_')) ||
     rawMessage ||
     '上游账号不可用';
+  const safeMessage = sanitizeSensitiveText(upstreamMessage);
 
   if (combined.includes('account_banned')) {
-    return { code: 'account_banned', message: upstreamMessage };
+    return { code: 'account_banned', message: safeMessage };
   }
   if (
     combined.includes('organization_disabled') ||
     combined.includes('organization has been disabled') ||
     combined.includes('this organization has been disabled')
   ) {
-    return { code: 'organization_disabled', message: upstreamMessage };
+    return { code: 'organization_disabled', message: safeMessage };
   }
   if (
     combined.includes('account_disabled') ||
     combined.includes('account has been disabled') ||
     combined.includes('user account is disabled')
   ) {
-    return { code: 'account_disabled', message: upstreamMessage };
+    return { code: 'account_disabled', message: safeMessage };
   }
   return null;
 }
@@ -565,7 +567,7 @@ function accountAuthSource(record: Record<string, unknown>): string {
   const source = readString(record, ['auth_source', 'authSource']).toLowerCase();
   if (source) return source;
   const label = claudeAuthMethodText(record).toLowerCase();
-  if (label.includes('claude code cli')) return 'claude_code_cli';
+  if (label.includes('cli')) return 'claude_code_cli';
   if (label.includes('platform')) return 'claude_platform';
   return '';
 }
@@ -649,7 +651,7 @@ function accountStateDetail(account: AuthFileItem): string {
   if (parseDateMs(retryAt) > Date.now()) {
     return `下次重试 ${formatDate(retryAt)}`;
   }
-  return (
+  return sanitizeSensitiveText(
     statusReasonLabel ||
     readString(record, ['status_message', 'statusMessage']) ||
     readString(record, ['status']) ||
@@ -757,20 +759,21 @@ function claudeApiErrorInfo(result: ApiCallResult): { code: string; message: str
 
 function formatClaudeAccountFailure(result: ApiCallResult, source: string): string {
   const { code, message } = claudeApiErrorInfo(result);
+  const safeMessage = sanitizeSensitiveText(message);
   const status = result.statusCode;
   if (code === 'account_banned' || message.toLowerCase().includes('account_banned')) {
-    return `Claude 账号已被上游标记为封禁/停用（account_banned，来自 ${source}）`;
+    return `账号已被上游标记为封禁/停用（account_banned，来自 ${source}）`;
   }
   if (status === 401) {
-    return `Claude 认证已失效或被撤销（401，来自 ${source}）：${message}`;
+    return `认证已失效或被撤销（401，来自 ${source}）：${safeMessage}`;
   }
   if (status === 403) {
-    return `Claude 账号无权访问该接口（403，来自 ${source}）：${message}`;
+    return `账号无权访问该接口（403，来自 ${source}）：${safeMessage}`;
   }
   if (status === 429) {
-    return `Claude 额度接口被限流（429，来自 ${source}）：${message}`;
+    return `额度接口被限流（429，来自 ${source}）：${safeMessage}`;
   }
-  return getApiCallErrorMessage(result);
+  return sanitizeSensitiveText(getApiCallErrorMessage(result));
 }
 
 function isClaudeAccountBlockingStatus(statusCode: number): boolean {
@@ -779,11 +782,11 @@ function isClaudeAccountBlockingStatus(statusCode: number): boolean {
 
 function resolveClaudePlanLabel(profile: ClaudeProfileResponse | null): string {
   if (!profile) return '未知套餐';
-  if (normalizeFlagValue(profile.account?.has_claude_max)) return 'Claude Max';
-  if (normalizeFlagValue(profile.account?.has_claude_pro)) return 'Claude Pro';
+  if (normalizeFlagValue(profile.account?.has_claude_max)) return 'Max';
+  if (normalizeFlagValue(profile.account?.has_claude_pro)) return 'Pro';
   const organizationType = String(profile.organization?.organization_type ?? '').toLowerCase();
   const subscriptionStatus = String(profile.organization?.subscription_status ?? '').toLowerCase();
-  if (organizationType === 'claude_team' && subscriptionStatus === 'active') return 'Claude Team';
+  if (organizationType === 'claude_team' && subscriptionStatus === 'active') return 'Team';
   if (
     normalizeFlagValue(profile.account?.has_claude_max) === false &&
     normalizeFlagValue(profile.account?.has_claude_pro) === false
@@ -843,7 +846,7 @@ async function fetchClaudeAccountQuota(account: AuthFileItem): Promise<AccountQu
 
   const payload = parseClaudeUsagePayload(usageResult.value.body ?? usageResult.value.bodyText);
   if (!payload) {
-    throw new Error('Claude 额度响应为空或格式异常');
+    throw new Error('额度响应为空或格式异常');
   }
 
   const windows = CLAUDE_USAGE_WINDOW_KEYS.flatMap(({ key, id, labelKey }) => {
@@ -888,11 +891,11 @@ function configText(value: unknown, fallback: string): string {
 
 function claudeAuthMethodText(record: Record<string, unknown>): string {
   const explicitLabel = readString(record, ['auth_method_label', 'authMethodLabel']);
-  if (explicitLabel) return explicitLabel;
+  if (explicitLabel) return sanitizeSensitiveText(explicitLabel);
   const source = readString(record, ['auth_source', 'authSource']);
   switch (source) {
     case 'claude_code_cli':
-      return 'Claude Code CLI OAuth';
+      return 'CLI OAuth';
     case 'claude_platform':
       return 'Platform OAuth';
     default:
@@ -965,7 +968,7 @@ function lastErrorText(record: Record<string, unknown>): string {
   const status = readString(error, ['http_status', 'httpStatus']);
   const code = readString(error, ['code']);
   const message = readString(error, ['message']);
-  const body = [status, code, message].filter(Boolean).join(' / ') || '有错误记录';
+  const body = sanitizeSensitiveText([status, code, message].filter(Boolean).join(' / ') || '有错误记录');
   if (isAccountQuotaCooling(record) || code === 'quota_exhausted' || code === 'rate_limited') {
     return `限额冷却 / ${body}`;
   }
@@ -1024,7 +1027,7 @@ function mimicryGuardActionLabel(action?: ClaudeMimicryEvent['action']): string 
 function mimicryClientSourceLabel(source?: string): string {
   switch ((source ?? '').toLowerCase()) {
     case 'claude-code':
-      return 'Claude Code';
+      return 'CLI';
     case 'cherrystudio':
       return 'Cherry Studio';
     case 'hermes':
@@ -1036,7 +1039,7 @@ function mimicryClientSourceLabel(source?: string): string {
     case 'openai-compatible':
       return 'OpenAI 兼容';
     default:
-      return source || '未知客户端';
+      return sanitizeSensitiveText(source || '未知客户端');
   }
 }
 
@@ -1224,8 +1227,8 @@ export function DashboardPage() {
     try {
       setMimicryAudit(await claudeMimicryApi.getAudit());
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Claude Code 对齐状态加载失败';
-      showNotification(message, 'error');
+      const message = err instanceof Error ? err.message : 'CLI 对齐状态加载失败';
+      showNotification(sanitizeSensitiveText(message), 'error');
     } finally {
       setLoadingMimicryAudit(false);
     }
@@ -1240,8 +1243,8 @@ export function DashboardPage() {
     try {
       setMimicryEvents(await claudeMimicryApi.getEvents(80));
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Claude Code 守卫事件加载失败';
-      showNotification(message, 'error');
+      const message = err instanceof Error ? err.message : 'CLI 守卫事件加载失败';
+      showNotification(sanitizeSensitiveText(message), 'error');
     } finally {
       setLoadingMimicryEvents(false);
     }
@@ -1525,7 +1528,7 @@ export function DashboardPage() {
         detail: '同一会话尽量落到同一账号，提高上下文稳定性',
       },
       {
-        label: 'Claude Code 指纹',
+        label: 'CLI 指纹',
         value: configText(claudeHeaders['user-agent'], 'claude-cli/2.1.148'),
         detail: readBool(claudeHeaders, ['stabilize-device-profile'], true)
           ? '设备画像稳定'
@@ -1554,7 +1557,7 @@ export function DashboardPage() {
 
   const handleCookieImport = async () => {
     if (!sessionKey.trim()) {
-      showNotification('请先填写 Claude sessionKey', 'error');
+      showNotification('请先填写 sessionKey', 'error');
       return;
     }
     setImporting(true);
@@ -1564,12 +1567,12 @@ export function DashboardPage() {
         proxyUrl: importProxyUrl.trim() || undefined,
       });
       setSessionKey('');
-      showNotification(`账号导入成功：${result.email || result.auth_file || 'Claude'}`, 'success');
+      showNotification(`账号导入成功：${sanitizeSensitiveText(result.email || result.auth_file || '账号')}`, 'success');
       await loadAccounts();
       await loadProxyPool();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Cookie 换授权失败';
-      showNotification(message, 'error');
+      showNotification(sanitizeSensitiveText(message), 'error');
     } finally {
       setImporting(false);
     }
@@ -1749,7 +1752,7 @@ export function DashboardPage() {
         await loadAccounts();
         const type = job.failed > 0 ? 'warning' : 'success';
         showNotification(
-          `Claude 账号检测${job.status === 'canceled' ? '已取消' : '完成'}：可用 ${job.ok}，异常 ${job.failed}`,
+          `账号检测${job.status === 'canceled' ? '已取消' : '完成'}：可用 ${job.ok}，异常 ${job.failed}`,
           type
         );
       } catch (err: unknown) {
@@ -1780,10 +1783,10 @@ export function DashboardPage() {
         setClaudeProbeJob(job);
         if (job.total === 0 || job.status !== 'running') {
           await loadAccounts();
-          showNotification('没有需要检测的 Claude 账号', 'info');
+          showNotification('没有需要检测的账号', 'info');
           return;
         }
-        showNotification(`Claude 账号检测已开始：${job.total} 个账号`, 'info');
+        showNotification(`账号检测已开始：${job.total} 个账号`, 'info');
         void pollClaudeProbeJob(job.id);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : '检测任务启动失败';
@@ -1798,7 +1801,7 @@ export function DashboardPage() {
     try {
       const job = await authFilesApi.cancelClaudeProbeJob(claudeProbeJob.id);
       setClaudeProbeJob(job);
-      showNotification('Claude 账号检测正在取消', 'info');
+      showNotification('账号检测正在取消', 'info');
       void pollClaudeProbeJob(claudeProbeJob.id);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '取消检测失败';
@@ -1897,7 +1900,7 @@ export function DashboardPage() {
       return;
     }
     const action = disabled ? '停用' : '启用';
-    if (!window.confirm(`确定要批量${action} ${selectedNames.length} 个 Claude 账号吗？`)) {
+    if (!window.confirm(`确定要批量${action} ${selectedNames.length} 个账号吗？`)) {
       return;
     }
     setSavingBatch(true);
@@ -1926,7 +1929,7 @@ export function DashboardPage() {
     }
     if (
       !window.confirm(
-        `确定要永久删除 ${names.length} 个 Claude 账号吗？此操作会移除账号授权文件，不能通过启用恢复。`
+        `确定要永久删除 ${names.length} 个账号吗？此操作会移除账号授权文件，不能通过启用恢复。`
       )
     ) {
       return;
@@ -1984,7 +1987,7 @@ export function DashboardPage() {
   const handleDeleteAccount = async (account: AuthFileItem) => {
     const name = String(account.name ?? '').trim();
     if (!name) return;
-    if (!window.confirm(`确定要删除 Claude 账号 ${getAccountTitle(account)} 吗？此操作会移除该账号授权文件。`)) {
+    if (!window.confirm(`确定要删除账号 ${getAccountTitle(account)} 吗？此操作会移除该账号授权文件。`)) {
       return;
     }
     setDeletingName(name);
@@ -1995,7 +1998,7 @@ export function DashboardPage() {
         delete next[name];
         return next;
       });
-      showNotification('Claude 账号已删除', 'success');
+      showNotification('账号已删除', 'success');
       await loadAccounts();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '账号删除失败';
@@ -2021,7 +2024,7 @@ export function DashboardPage() {
         delete next[name];
         return next;
       });
-      showNotification('Claude 账号认证已刷新并恢复', 'success');
+      showNotification('账号认证已刷新并恢复', 'success');
       await loadAccounts();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '账号重认证失败';
@@ -2053,11 +2056,12 @@ export function DashboardPage() {
       void refreshSingleAccountSnapshot(name).catch(() => {});
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '订阅与额度查询失败';
+      const safeMessage = sanitizeSensitiveText(message);
       setQuotaByAccount((prev) => ({
         ...prev,
-        [name]: { status: 'error', windows: [], error: message },
+        [name]: { status: 'error', windows: [], error: safeMessage },
       }));
-      showNotification(message, 'error');
+      showNotification(safeMessage, 'error');
       void refreshSingleAccountSnapshot(name).catch(() => {});
     }
   };
@@ -2153,7 +2157,7 @@ export function DashboardPage() {
           className={styles.accountDetailDrawer}
           role="dialog"
           aria-modal="true"
-          aria-label="Claude 账号详情"
+          aria-label="账号详情"
           onClick={(event) => event.stopPropagation()}
         >
           <div className={styles.drawerHeader}>
@@ -2254,7 +2258,7 @@ export function DashboardPage() {
                     ? '账号已被上游禁用，额度信息仅供历史参考'
                     : quotaDetail?.status === 'success'
                       ? `${quotaDetail.planLabel || '未知套餐'}${quotaDetail.subscriptionStatus ? ` / ${quotaDetail.subscriptionStatus}` : ''}`
-                      : '按需查询 Claude 上游用量'}
+                      : '按需查询上游用量'}
                 </span>
               </div>
               <Button
@@ -2338,11 +2342,10 @@ export function DashboardPage() {
     <div className={styles.dashboard}>
       <section className={styles.hero}>
         <div>
-          <div className={styles.kicker}>Claude Relay Console</div>
-          <h1>Claude 账号池与反代控制台</h1>
+          <div className={styles.kicker}>OpenStar Admin</div>
+          <h1>账号池与反代控制台</h1>
           <p>
-            集中管理 Claude OAuth 账号、Cookie 换授权、每账号代理、请求重试、账号切换与 Claude Code
-            兼容策略。
+            集中管理 OAuth 账号、Cookie 换授权、每账号代理、请求重试、账号切换与 CLI 兼容策略。
           </p>
         </div>
         <div className={styles.heroActions}>
@@ -2367,7 +2370,7 @@ export function DashboardPage() {
       <section className={styles.statsGrid}>
         <StatCard
           icon={<IconFileText size={22} />}
-          label="Claude 账号"
+          label="服务账号"
           value={stats.total}
           detail={`${stats.active} 个可用，${stats.disabled} 个停用`}
           tone="neutral"
@@ -2474,7 +2477,7 @@ export function DashboardPage() {
       <section className={styles.mimicryPanel}>
         <div className={styles.panelHeader}>
           <div>
-            <h2>Claude Code 对齐状态</h2>
+            <h2>CLI 对齐状态</h2>
             <p>直接校验最近一次真实出站请求的 system、CCH、beta、thinking、tools 与 Header。</p>
           </div>
           <div className={styles.mimicryHeaderActions}>
@@ -2703,8 +2706,8 @@ export function DashboardPage() {
         <div className={styles.importPanel}>
           <div className={styles.panelHeader}>
             <div>
-              <h2>导入 Claude 账号</h2>
-              <p>支持 OAuth 授权，也支持使用 claude.ai 的 sessionKey 换取 Claude Code OAuth 授权。</p>
+              <h2>导入服务账号</h2>
+              <p>支持 OAuth 授权，也支持使用官方站点的 sessionKey 换取 CLI OAuth 授权。</p>
             </div>
             <Link to="/oauth" className={styles.textLink}>
               OAuth 导入页
@@ -2712,11 +2715,11 @@ export function DashboardPage() {
             </Link>
           </div>
           <Input
-            label="Claude sessionKey"
+            label="sessionKey"
             type="password"
             value={sessionKey}
             onChange={(event) => setSessionKey(event.target.value)}
-            placeholder="粘贴 claude.ai Cookie 中的 sessionKey"
+            placeholder="粘贴官方站点 Cookie 中的 sessionKey"
           />
           <ProxyPicker
             label="该账号专属代理"
@@ -2841,7 +2844,7 @@ export function DashboardPage() {
           <div className={styles.panelHeader}>
             <div>
               <h2>伪装与切换策略</h2>
-              <p>默认策略已按 Claude Code 兼容、稳定会话与高缓存命中率配置。</p>
+              <p>默认策略已按 CLI 兼容、稳定会话与高缓存命中率配置。</p>
             </div>
           </div>
           <div className={styles.strategyGrid}>
@@ -2860,7 +2863,7 @@ export function DashboardPage() {
         <div className={styles.sectionHeader}>
           <div>
             <h2>账号池</h2>
-            <p>每个账号都可以独立配置代理 IP、优先级、路径前缀和 Claude Code 伪装方式。</p>
+            <p>每个账号都可以独立配置代理 IP、优先级、路径前缀和 CLI 伪装方式。</p>
           </div>
           <span className={styles.connectionBadge}>
             {connectionStatus === 'connected' ? apiBase || '已连接' : '未连接'}
@@ -2993,7 +2996,7 @@ export function DashboardPage() {
           <div className={styles.accountProbePanel}>
             <div className={styles.accountProbeHeader}>
               <div>
-                <strong>Claude 账号可用性检测</strong>
+                <strong>账号可用性检测</strong>
                 <span>
                   {claudeProbeRunning
                     ? `正在检测 ${claudeProbeJob.completed}/${claudeProbeJob.total}`
@@ -3022,7 +3025,7 @@ export function DashboardPage() {
                     <span key={`${item.name}-${item.status}`}>
                       <strong>{item.name}</strong>
                       {item.status}
-                      {item.message ? ` · ${item.message}` : ''}
+                      {item.message ? ` · ${sanitizeSensitiveText(item.message)}` : ''}
                     </span>
                   ))}
               </div>
@@ -3031,11 +3034,11 @@ export function DashboardPage() {
         )}
 
         {loading ? (
-          <div className={styles.emptyState}>正在加载 Claude 账号池...</div>
+          <div className={styles.emptyState}>正在加载账号池...</div>
         ) : accounts.length === 0 ? (
-          <div className={styles.emptyState}>还没有 Claude 账号。先用 OAuth 或 Cookie 换授权导入一个账号。</div>
+          <div className={styles.emptyState}>还没有账号。先用 OAuth 或 Cookie 换授权导入一个账号。</div>
         ) : filteredAccounts.length === 0 ? (
-          <div className={styles.emptyState}>没有符合当前筛选条件的 Claude 账号。</div>
+          <div className={styles.emptyState}>没有符合当前筛选条件的账号。</div>
         ) : accountViewMode === 'table' ? (
           <div className={styles.accountTableShell}>
             <table className={styles.accountTable}>
@@ -3328,7 +3331,7 @@ export function DashboardPage() {
                             ? '账号已被上游禁用，额度信息仅供历史参考'
                             : quotaDetail?.status === 'success'
                             ? `${quotaDetail.planLabel || '未知套餐'}${quotaDetail.subscriptionStatus ? ` / ${quotaDetail.subscriptionStatus}` : ''}`
-                            : '按需查询 Claude 上游用量'}
+                            : '按需查询上游用量'}
                         </span>
                       </div>
                       <Button
@@ -3435,7 +3438,7 @@ export function DashboardPage() {
             <div className={styles.modalHeader}>
               <div>
                 <h2>批量账号策略</h2>
-                <p>将选中的字段写入 {selectedNames.length} 个 Claude 账号；未勾选的字段保持原样。</p>
+                <p>将选中的字段写入 {selectedNames.length} 个账号；未勾选的字段保持原样。</p>
               </div>
               <button type="button" className={styles.iconButton} onClick={closeBatchEditor} aria-label="关闭">
                 ×
@@ -3502,7 +3505,7 @@ export function DashboardPage() {
                   onChange={(cloakCacheUserId) =>
                     setBatchForm({ ...batchForm, cloakCacheUserId })
                   }
-                  label="稳定 Claude Code user_id"
+                  label="稳定 CLI user_id"
                 />
               </section>
 
@@ -3558,7 +3561,7 @@ export function DashboardPage() {
             <div className={styles.modalHeader}>
               <div>
                 <h2>{getAccountTitle(editingAccount)}</h2>
-                <p>配置该账号的路由、代理与 Claude Code 兼容策略。</p>
+                <p>配置该账号的路由、代理与 CLI 兼容策略。</p>
               </div>
               <button type="button" className={styles.iconButton} onClick={closeEditor} aria-label="关闭">
                 ×
@@ -3617,7 +3620,7 @@ export function DashboardPage() {
               <ToggleSwitch
                 checked={editForm.cloakCacheUserId}
                 onChange={(cloakCacheUserId) => setEditForm({ ...editForm, cloakCacheUserId })}
-                label="稳定 Claude Code user_id"
+                label="稳定 CLI user_id"
               />
               <ToggleSwitch
                 checked={editForm.cloakStrictMode}

@@ -1,10 +1,10 @@
-# Claude 账号池前端维护地图
+# 账号池前端维护地图
 
-这份文档用于避免后续二开时改错页面。生产管理面板已经改成“Claude 账号池与反代控制台”，大多数账号池功能都集中在 `DashboardPage`，不是原版 CPA 的 `AuthFilesPage`。
+这份文档用于避免后续二开时改错页面。生产管理面板已经改成中性品牌的账号池控制台，大多数账号池功能都集中在 `DashboardPage`，不是原版 CPA 的 `AuthFilesPage`。
 
 ## 生产入口
 
-- 生产 URL：`http://服务器IP:8318/management.html`
+- 生产 URL：`https://admin.openstaryu.com/management.html`
 - 前端路由入口：`src/router/MainRoutes.tsx`
 - 当前主页面：
   - `/` -> `src/pages/DashboardPage.tsx`
@@ -14,7 +14,7 @@
   - `/ai-providers/*` -> `/`
   - `/quota` -> `/`
 
-结论：只要截图里是“账号池”“导入账号”“代理池”“策略设置”这套 Claude 专用控制台，账号池交互优先检查 `src/pages/DashboardPage.tsx` 和 `src/pages/DashboardPage.module.scss`。
+结论：只要截图里是“账号池”“导入账号”“代理池”“策略设置”这套账号池控制台，账号池交互优先检查 `src/pages/DashboardPage.tsx` 和 `src/pages/DashboardPage.module.scss`。
 
 ## 文件职责
 
@@ -22,7 +22,7 @@
 
 这是生产首页账号池的真实实现文件，负责：
 
-- Claude 账号池列表/卡片视图
+- 账号池列表/卡片视图
 - 账号搜索、状态筛选、代理筛选、认证方式筛选
 - 批量选择、批量策略、批量启用/停用
 - 批量删除选中账号
@@ -31,11 +31,11 @@
 - 单账号设置、重认证、启用/停用、删除
 - 一键检测账号可用性
 - Cookie/sessionKey 导入和批量抓取导入
-- Claude Code 伪装状态摘要
+- CLI 伪装状态摘要
 
 关键状态和函数：
 
-- `accounts`：当前页面展示的 Claude 账号快照。
+- `accounts`：当前页面展示的账号快照。
 - `loadAccounts()`：全量加载账号池。只应该用于页面首次进入、手动刷新、批量任务完成、导入任务完成。
 - `refreshSingleAccountSnapshot(name)`：轻量刷新某一个账号快照，不触发整池 loading。
 - `quotaByAccount`：按账号名保存“订阅与额度”的前端查询结果。
@@ -61,7 +61,7 @@
 
 账号池管理 API 封装，常用入口：
 
-- `listClaudeHealth()`：读取带健康状态的 Claude 账号列表。
+- `listClaudeHealth()`：读取带健康状态的账号列表。
 - `patchFields(name, fields)`：保存账号代理、优先级、RPM、会话上限、伪装策略等字段。
 - `setStatus(name, disabled)`：启用或停用账号。
 - `deleteFile(name)`：删除账号文件。
@@ -70,19 +70,19 @@
 
 ### `src/services/api/claudeSessionImport.ts`
 
-批量抓取来源中的 sessionKey 并按现有认证逻辑导入账号池。
+批量抓取来源中的 sessionKey 并按现有认证逻辑导入账号池。注意导入任务有两段出站：先抓取来源列表，再验证/换授权。`proxy_url` 留空时，后端必须从已启用代理池随机选择代理用于来源抓取和账号验证，避免来源抓取走服务器本机 IP；指定 `proxy_url` 时使用指定代理。
 
 ### `src/pages/AuthFilesPage.tsx`
 
-这是原版 CPA 的通用授权文件管理页。当前生产路由 `/auth-files/*` 已经重定向到 `/`，所以不要把 Claude 专用账号池的新交互只加到这里。只有明确要恢复或维护旧通用页面时才修改它。
+这是原版 CPA 的通用授权文件管理页。当前生产路由 `/auth-files/*` 已经重定向到 `/`，所以不要把账号池的新交互只加到这里。只有明确要恢复或维护旧通用页面时才修改它。
 
 ## 后端相关入口
 
 后端仓库是 `F:\claude反代\CLIProxyAPI`。
 
-常见 Claude 账号池后端能力：
+常见账号池后端能力：
 
-- Claude OAuth / Cookie 换授权 / Claude Code CLI 风格授权：`internal/auth`、`internal/runtime` 下的 Claude 相关文件。
+- OAuth / Cookie 换授权 / CLI 风格授权：`internal/auth`、`internal/runtime` 下的 provider 相关文件。
 - 账号健康、冷却、RPM、会话状态：`internal/runtime` 和管理路由相关文件。
 - 一键检测任务：搜索 `claude-probe-jobs`。
 - 代理池：搜索 `proxy pool`、`proxy_url`、`ProxyPool`。
@@ -111,7 +111,10 @@
 npm run type-check
 npm run lint
 npm run build
+rg -n -i "claude|anthropic" dist
 ```
+
+`rg` 对 `dist` 的扫描必须无结果。管理面板对外域名可被静态扫描，生产构建后的 `management.html` 不能包含敏感 provider 明文字面量；`npm run build` 会自动执行 `scripts/sanitize-management-html.mjs`。
 
 人工检查项：
 

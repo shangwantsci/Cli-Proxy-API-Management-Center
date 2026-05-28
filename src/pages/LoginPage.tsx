@@ -184,7 +184,7 @@ export function LoginPage() {
       {/* 左侧品牌展示区 */}
       <div className={styles.brandPanel}>
         <div className={styles.brandContent}>
-          <span className={styles.brandWord}>CLAUDE</span>
+          <span className={styles.brandWord}>OPENSTAR</span>
           <span className={styles.brandWord}>RELAY</span>
           <span className={styles.brandWord}>POOL</span>
         </div>
@@ -196,7 +196,7 @@ export function LoginPage() {
           /* 启动动画 */
           <div className={styles.splashContent}>
             <div className={styles.splashLogo} aria-hidden="true">CR</div>
-            <h1 className={styles.splashTitle}>Claude Relay Console</h1>
+            <h1 className={styles.splashTitle}>OpenStar Admin</h1>
             <p className={styles.splashSubtitle}>正在连接账号池控制台</p>
             <div className={styles.splashLoader}>
               <div className={styles.splashLoaderBar} />
@@ -212,7 +212,7 @@ export function LoginPage() {
             <div className={styles.loginCard}>
               <div className={styles.loginHeader}>
                 <div className={styles.titleRow}>
-                  <div className={styles.title}>Claude Relay Console</div>
+                  <div className={styles.title}>OpenStar Admin</div>
                   <Select
                     className={styles.languageSelect}
                     value={language}
@@ -222,7 +222,7 @@ export function LoginPage() {
                     ariaLabel={t('language.switch')}
                   />
                 </div>
-                <div className={styles.subtitle}>登录后管理 Claude 账号池、OAuth 授权和反代策略</div>
+                <div className={styles.subtitle}>登录后管理账号池、OAuth 授权和反代策略</div>
               </div>
 
               <div className={styles.connectionBox}>

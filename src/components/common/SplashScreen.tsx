@@ -24,7 +24,7 @@ export function SplashScreen({ onFinish, fadeOut = false }: SplashScreenProps) {
     <div className={`splash-screen ${fadeOut ? 'fade-out' : ''}`}>
       <div className="splash-content">
         <div className="splash-logo splash-logo-mark" aria-hidden="true">CR</div>
-        <h1 className="splash-title">Claude Relay Console</h1>
+        <h1 className="splash-title">OpenStar Admin</h1>
         <p className="splash-subtitle">正在连接账号池控制台</p>
         <div className="splash-loader">
           <div className="splash-loader-bar" />

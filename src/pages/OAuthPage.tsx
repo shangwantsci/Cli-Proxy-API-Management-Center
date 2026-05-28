@@ -8,6 +8,7 @@ import { extractOAuthCallbackState, oauthApi } from '@/services/api/oauth';
 import { proxyPoolApi, type ProxyPoolEntry } from '@/services/api/proxyPool';
 import { useNotificationStore } from '@/stores';
 import { copyToClipboard } from '@/utils/clipboard';
+import { sanitizeSensitiveText } from '@/utils/displaySanitizer';
 import styles from './OAuthPage.module.scss';
 import iconClaude from '@/assets/icons/claude.svg';
 
@@ -24,10 +25,10 @@ function errorMessage(error: unknown): string {
 }
 
 function authMethodText(source?: string, label?: string): string {
-  if (label?.trim()) return label.trim();
+  if (label?.trim()) return sanitizeSensitiveText(label.trim());
   switch (source?.trim()) {
     case 'claude_code_cli':
-      return 'Claude Code CLI OAuth';
+      return 'CLI OAuth';
     case 'claude_platform':
       return 'Platform OAuth';
     default:
@@ -105,17 +106,17 @@ export function OAuthPage() {
         try {
           const result = await oauthApi.getAuthStatus(state);
           if (result.status === 'ok') {
-            markSuccess(`Claude OAuth 授权完成：${authMethodText(result.auth_source, result.auth_method_label)}`);
+            markSuccess(`OAuth 授权完成：${authMethodText(result.auth_source, result.auth_method_label)}`);
             void loadProxyPool();
           } else if (result.status === 'error') {
             clearPollTimer();
             setStatus('error');
-            setStatusText(result.error || 'Claude OAuth 授权失败');
+            setStatusText(result.error ? sanitizeSensitiveText(result.error) : 'OAuth 授权失败');
           }
         } catch (error) {
           clearPollTimer();
           setStatus('error');
-          setStatusText(errorMessage(error));
+          setStatusText(sanitizeSensitiveText(errorMessage(error)));
         }
       }, 2000);
     },
@@ -125,22 +126,22 @@ export function OAuthPage() {
   const startOAuth = async () => {
     setStarting(true);
     setStatus('waiting');
-    setStatusText('正在创建 Claude OAuth 授权链接');
+    setStatusText('正在创建 OAuth 授权链接');
     try {
       const result = await oauthApi.startAuth('anthropic', {
         proxyUrl: proxyUrl.trim() || undefined,
       });
       setAuthUrl(result.url);
       setAuthState(result.state || '');
-      setStatusText('请在新窗口完成 Claude 授权；跳到 localhost 后复制地址栏完整回调 URL 粘贴到下方');
+      setStatusText('请在新窗口完成授权；跳到 localhost 后复制地址栏完整回调 URL 粘贴到下方');
       if (result.state) {
         pollStatus(result.state);
       }
       window.open(result.url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       setStatus('error');
-      setStatusText(errorMessage(error));
-      showNotification(`创建 Claude OAuth 链接失败：${errorMessage(error)}`, 'error');
+      setStatusText(sanitizeSensitiveText(errorMessage(error)));
+      showNotification(`创建 OAuth 链接失败：${sanitizeSensitiveText(errorMessage(error))}`, 'error');
     } finally {
       setStarting(false);
     }
@@ -148,7 +149,7 @@ export function OAuthPage() {
 
   const submitCallback = async () => {
     if (!callbackUrl.trim()) {
-      showNotification('请粘贴 Claude 回调地址或 code/state 参数', 'error');
+      showNotification('请粘贴回调地址或 code/state 参数', 'error');
       return;
     }
     setCallbackSubmitting(true);
@@ -157,8 +158,8 @@ export function OAuthPage() {
       const result = await oauthApi.submitCallback('anthropic', callbackInput);
       const submittedState = result.state || extractOAuthCallbackState(callbackInput) || authState;
       setStatus('waiting');
-      setStatusText('Claude OAuth 回调已提交，正在换取 token 并写入账号池');
-      showNotification('Claude OAuth 回调已提交，正在等待后端完成换授权', 'success');
+      setStatusText('OAuth 回调已提交，正在换取 token 并写入账号池');
+      showNotification('OAuth 回调已提交，正在等待后端完成换授权', 'success');
       if (submittedState) {
         setAuthState(submittedState);
         pollStatus(submittedState);
@@ -166,8 +167,8 @@ export function OAuthPage() {
       setCallbackUrl('');
     } catch (error) {
       setStatus('error');
-      setStatusText(errorMessage(error));
-      showNotification(`提交回调失败：${errorMessage(error)}`, 'error');
+      setStatusText(sanitizeSensitiveText(errorMessage(error)));
+      showNotification(`提交回调失败：${sanitizeSensitiveText(errorMessage(error))}`, 'error');
     } finally {
       setCallbackSubmitting(false);
     }
@@ -175,7 +176,7 @@ export function OAuthPage() {
 
   const submitCookie = async () => {
     if (!sessionKey.trim()) {
-      showNotification('请填写 Claude sessionKey', 'error');
+      showNotification('请填写 sessionKey', 'error');
       return;
     }
     setCookieSubmitting(true);
@@ -185,14 +186,14 @@ export function OAuthPage() {
         sessionKey: sessionKey.trim(),
         proxyUrl: proxyUrl.trim() || undefined,
       });
-      const label = result.email || result.auth_file || 'Claude';
+      const label = result.email || result.auth_file || '账号';
       const method = authMethodText(result.auth_source, result.auth_method_label);
-      setCookieResult(`已导入 ${label}，认证方式：${method}`);
+      setCookieResult(`已导入 ${sanitizeSensitiveText(label)}，认证方式：${method}`);
       setSessionKey('');
       markSuccess(`Cookie 换授权完成：${method}`);
       void loadProxyPool();
     } catch (error) {
-      showNotification(`Cookie 换授权失败：${errorMessage(error)}`, 'error');
+      showNotification(`Cookie 换授权失败：${sanitizeSensitiveText(errorMessage(error))}`, 'error');
     } finally {
       setCookieSubmitting(false);
     }
@@ -202,10 +203,10 @@ export function OAuthPage() {
     <div className={styles.container}>
       <div className={styles.content}>
         <div>
-          <h1 className={styles.pageTitle}>导入 Claude 账号</h1>
+          <h1 className={styles.pageTitle}>导入服务账号</h1>
           <p className={styles.cardHint}>
-            OAuth 是授权协议，用来把 Claude 账号换成可自动刷新的访问令牌；Cookie
-            换授权是用 claude.ai 的 sessionKey 完成同一件事。
+            OAuth 是授权协议，用来把服务账号换成可自动刷新的访问令牌；Cookie
+            换授权是用官方站点的 sessionKey 完成同一件事。
           </p>
         </div>
 
@@ -213,7 +214,7 @@ export function OAuthPage() {
           title={
             <span className={styles.cardTitle}>
               <img src={iconClaude} alt="" className={styles.cardTitleIcon} />
-              Claude OAuth
+              OAuth 导入
             </span>
           }
           extra={
@@ -224,7 +225,7 @@ export function OAuthPage() {
         >
           <div className={styles.cardContent}>
             <p className={styles.cardHint}>
-              默认模拟 Claude Code CLI 登录。授权后浏览器跳到 localhost 属于正常现象，复制地址栏完整回调
+              默认模拟 CLI 登录。授权后浏览器跳到 localhost 属于正常现象，复制地址栏完整回调
               URL 提交即可；后端会保存刷新令牌用于长期续期。
             </p>
             <ProxyPicker
@@ -237,14 +238,14 @@ export function OAuthPage() {
             />
             <div className={styles.authUrlActions}>
               <Button onClick={startOAuth} loading={starting}>
-                开始 Claude OAuth
+                开始 OAuth
               </Button>
               {authUrl && (
                 <Button
                   variant="secondary"
                   onClick={async () => {
                     const copied = await copyToClipboard(authUrl);
-                    showNotification(copied ? 'Claude OAuth 链接已复制' : '复制失败', copied ? 'success' : 'error');
+                    showNotification(copied ? 'OAuth 链接已复制' : '复制失败', copied ? 'success' : 'error');
                   }}
                 >
                   复制授权链接
@@ -291,16 +292,16 @@ export function OAuthPage() {
         >
           <div className={styles.cardContent}>
             <p className={styles.cardHint}>
-              适合已有 claude.ai 登录态时快速导入。后端会优先换取 Claude Code CLI 风格 token；
+              适合已有官方站点登录态时快速导入。后端会优先换取 CLI 风格 token；
               如果上游不接受 localhost 回调，会自动回退兼容模式。
             </p>
             <div className={styles.cookieSection}>
               <Input
-                label="Claude sessionKey"
+                label="sessionKey"
                 type="password"
                 value={sessionKey}
                 onChange={(event) => setSessionKey(event.target.value)}
-                placeholder="粘贴 claude.ai Cookie 中的 sessionKey"
+                placeholder="粘贴官方站点 Cookie 中的 sessionKey"
               />
               <ProxyPicker
                 label="该账号专属代理"

@@ -224,8 +224,8 @@ export function MainLayout() {
   const themeMenuRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
 
-  const fullBrandName = 'Claude Relay Console';
-  const abbrBrandName = 'Claude Relay';
+  const fullBrandName = 'OpenStar Admin';
+  const abbrBrandName = 'OpenStar';
   const isLogsPage = location.pathname.startsWith('/logs');
   const showSidebarLabels = !sidebarCollapsed || sidebarOpen;
 
