@@ -284,6 +284,7 @@ export function VisualConfigEditor({
   const activeSection = sections.find((section) => section.id === activeSectionId) ?? sections[0];
   const hasValidationIssues = sections.some((section) => section.errorCount > 0);
   const routingStrategyLabel = values.routingStrategy === 'fill-first' ? '填满优先' : '轮询均衡';
+  const apiConnectionsEnabled = values.apiConnectionsEnabled;
   const coolingEnabled = !values.disableCooling;
   const stableFingerprintEnabled = values.claudeHeaderStabilizeDeviceProfile;
   const affinityEnabled = values.routingSessionAffinity;
@@ -417,6 +418,11 @@ export function VisualConfigEditor({
             tone={affinityEnabled ? 'good' : 'neutral'}
           />
           <StrategyMetric label="换号" value={routingStrategyLabel} />
+          <StrategyMetric
+            label="API"
+            value={apiConnectionsEnabled ? '开放' : '关闭'}
+            tone={apiConnectionsEnabled ? 'good' : 'warn'}
+          />
           <StrategyMetric
             label="重试账号"
             value={retryCredentialText(values.maxRetryCredentials)}
@@ -784,6 +790,13 @@ export function VisualConfigEditor({
           >
             <SectionStack>
               <SectionGrid>
+                <ToggleRow
+                  title="开放 API 连接"
+                  description="关闭后公开 API 入口返回 503，不再触达账号池；管理页和健康检查仍可使用。"
+                  checked={apiConnectionsEnabled}
+                  disabled={disabled}
+                  onChange={(enabled) => onChange({ apiConnectionsEnabled: enabled })}
+                />
                 <FieldShell
                   label="账号选择策略"
                   labelId={routingStrategyLabelId}

@@ -84,6 +84,20 @@ export const configApi = {
   updateWsAuth: (enabled: boolean) => apiClient.put('/ws-auth', { value: enabled }),
 
   /**
+   * 获取 API 连接总闸状态
+   */
+  async getApiConnectionsEnabled(): Promise<boolean> {
+    const data = await apiClient.get<Record<string, unknown>>('/api-connections');
+    return Boolean(data?.enabled ?? !data?.disabled);
+  },
+
+  /**
+   * 更新 API 连接总闸状态
+   */
+  updateApiConnectionsEnabled: (enabled: boolean) =>
+    apiClient.put('/api-connections', { enabled }),
+
+  /**
    * 获取强制模型前缀开关
    */
   async getForceModelPrefix(): Promise<boolean> {

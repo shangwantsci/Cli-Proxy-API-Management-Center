@@ -713,6 +713,7 @@ function applyClaudeStrategyVisualChangesToDoc(
   values: VisualConfigValues,
   dirtyFields: Set<string>
 ): void {
+  setBooleanInDoc(doc, ['disable-api-connections'], !values.apiConnectionsEnabled);
   setStringInDoc(doc, ['proxy-url'], values.proxyUrl);
   setBooleanInDoc(doc, ['force-model-prefix'], values.forceModelPrefix);
   setBooleanInDoc(doc, ['passthrough-headers'], values.passthroughHeaders);
@@ -1000,6 +1001,12 @@ function getNextDirtyFields(
   if (Object.prototype.hasOwnProperty.call(patch, 'apiKeysText')) {
     updateDirty('apiKeysText', nextValues.apiKeysText === baselineValues.apiKeysText);
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'apiConnectionsEnabled')) {
+    updateDirty(
+      'apiConnectionsEnabled',
+      nextValues.apiConnectionsEnabled === baselineValues.apiConnectionsEnabled
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(patch, 'debug')) {
     updateDirty('debug', nextValues.debug === baselineValues.debug);
   }
@@ -1256,6 +1263,7 @@ export function useVisualConfig() {
 
         authDir: typeof parsed['auth-dir'] === 'string' ? parsed['auth-dir'] : '',
         apiKeysText: resolveApiKeysText(parsed),
+        apiConnectionsEnabled: !parseBooleanDefault(parsed['disable-api-connections'], false),
 
         debug: Boolean(parsed.debug),
         commercialMode: Boolean(parsed['commercial-mode']),
@@ -1448,6 +1456,7 @@ export function useVisualConfig() {
         }
         deleteLegacyApiKeysProvider(doc);
 
+        setBooleanInDoc(doc, ['disable-api-connections'], !values.apiConnectionsEnabled);
         setBooleanInDoc(doc, ['debug'], values.debug);
 
         setBooleanInDoc(doc, ['commercial-mode'], values.commercialMode);

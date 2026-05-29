@@ -86,6 +86,7 @@ export type VisualConfigValues = {
   rmPanelRepo: string;
   authDir: string;
   apiKeysText: string;
+  apiConnectionsEnabled: boolean;
   debug: boolean;
   commercialMode: boolean;
   loggingToFile: boolean;
@@ -152,6 +153,7 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   rmPanelRepo: '',
   authDir: '',
   apiKeysText: '',
+  apiConnectionsEnabled: true,
   debug: false,
   commercialMode: false,
   loggingToFile: false,
