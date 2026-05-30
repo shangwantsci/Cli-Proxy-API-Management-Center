@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { parseDocument } from 'yaml';
@@ -72,6 +72,15 @@ type AccountStateFilter = AccountState | 'all' | 'banned';
 type AccountProxyFilter = 'all' | 'withProxy' | 'defaultProxy' | 'direct';
 type AccountAuthFilter = 'all' | 'claude_code_cli' | 'claude_platform' | 'unknown';
 type AccountViewMode = 'table' | 'cards';
+type AccountImportSource = 'manual' | 'bulk_session_import';
+
+interface AccountSection {
+  key: AccountImportSource;
+  title: string;
+  detail: string;
+  emptyText: string;
+  accounts: AuthFileItem[];
+}
 
 const ACCOUNT_VIEW_MODE_STORAGE_KEY = 'claude-account-view-mode-v2';
 
@@ -121,6 +130,14 @@ interface AccountQuotaDetail {
   accountEmail?: string;
   extraUsage?: ClaudeExtraUsage | null;
   error?: string;
+}
+
+type AccountPlanTone = 'max' | 'pro' | 'team' | 'free' | 'unknown';
+
+interface AccountPlanBadge {
+  label: string;
+  tone: AccountPlanTone;
+  detail?: string;
 }
 
 const CLOAK_MODE_OPTIONS = [
@@ -572,6 +589,14 @@ function accountAuthSource(record: Record<string, unknown>): string {
   return '';
 }
 
+function accountImportSource(record: Record<string, unknown>): AccountImportSource {
+  const source = readString(record, ['import_source', 'importSource']).toLowerCase();
+  if (source === 'bulk_session_import' || source === 'bulk' || source === 'batch') {
+    return 'bulk_session_import';
+  }
+  return 'manual';
+}
+
 function accountMatchesAuthFilter(
   record: Record<string, unknown>,
   filter: AccountAuthFilter
@@ -605,6 +630,7 @@ function accountSearchText(account: AuthFileItem): string {
     readString(record, ['prefix']),
     readString(record, ['status_reason', 'statusReason']),
     readString(record, ['status_reason_label', 'statusReasonLabel']),
+    accountImportSource(record) === 'bulk_session_import' ? '批量一键导入' : '手动导入',
     claudeAuthMethodText(record),
     accountStateDetail(account),
     lastErrorText(record),
@@ -794,6 +820,71 @@ function resolveClaudePlanLabel(profile: ClaudeProfileResponse | null): string {
     return 'Free';
   }
   return '未知套餐';
+}
+
+function normalizePlanBadge(rawPlan: string, detail?: string): AccountPlanBadge {
+  const normalized = rawPlan.trim().toLowerCase();
+  switch (normalized) {
+    case 'max':
+    case 'plan_max':
+      return { label: 'Max', tone: 'max', detail };
+    case 'pro':
+    case 'plan_pro':
+      return { label: 'Pro', tone: 'pro', detail };
+    case 'team':
+    case 'business':
+    case 'go':
+    case 'plan_team':
+      return { label: 'Team', tone: 'team', detail };
+    case 'free':
+    case 'plan_free':
+      return { label: 'Free', tone: 'free', detail };
+    default:
+      return { label: rawPlan.trim() || '待刷新', tone: 'unknown', detail };
+  }
+}
+
+function accountPlanBadge(
+  record: Record<string, unknown>,
+  quotaDetail?: AccountQuotaDetail
+): AccountPlanBadge {
+  if (quotaDetail?.status === 'loading') {
+    return { label: '查询中', tone: 'unknown' };
+  }
+  if (quotaDetail?.status === 'error') {
+    return { label: '刷新失败', tone: 'unknown' };
+  }
+  if (quotaDetail?.status === 'success') {
+    return normalizePlanBadge(
+      quotaDetail.planLabel || '未知套餐',
+      quotaDetail.subscriptionStatus || undefined
+    );
+  }
+
+  const metadata = readRecord(record.metadata);
+  const attributes = readRecord(record.attributes);
+  const rawPlan =
+    readString(record, ['plan_type', 'planType']) ||
+    readString(metadata ?? {}, ['plan_type', 'planType']) ||
+    readString(attributes ?? {}, ['plan_type', 'planType']);
+
+  if (rawPlan) return normalizePlanBadge(rawPlan);
+  return { label: '待刷新', tone: 'unknown' };
+}
+
+function accountPlanToneClass(tone: AccountPlanTone): string {
+  switch (tone) {
+    case 'max':
+      return styles.accountPlanMax;
+    case 'pro':
+      return styles.accountPlanPro;
+    case 'team':
+      return styles.accountPlanTeam;
+    case 'free':
+      return styles.accountPlanFree;
+    default:
+      return styles.accountPlanUnknown;
+  }
 }
 
 function claudeWindowLabel(labelKey: string, fallback: string): string {
@@ -1368,6 +1459,34 @@ export function DashboardPage() {
       return true;
     });
   }, [accountAuthFilter, accountProxyFilter, accountSearch, accountStateFilter, accounts, quotaByAccount]);
+  const accountSections = useMemo<AccountSection[]>(() => {
+    const manual: AuthFileItem[] = [];
+    const bulk: AuthFileItem[] = [];
+    filteredAccounts.forEach((account) => {
+      const source = accountImportSource(account as Record<string, unknown>);
+      if (source === 'bulk_session_import') {
+        bulk.push(account);
+      } else {
+        manual.push(account);
+      }
+    });
+    return [
+      {
+        key: 'manual',
+        title: '手动导入账号',
+        detail: 'OAuth、单个 Cookie / sessionKey 导入；旧账号默认归入这里',
+        emptyText: '当前筛选下没有手动导入账号',
+        accounts: manual,
+      },
+      {
+        key: 'bulk_session_import',
+        title: '批量一键导入账号',
+        detail: '通过批量抓取验证并导入流程加入的账号',
+        emptyText: '当前筛选下没有批量一键导入账号',
+        accounts: bulk,
+      },
+    ];
+  }, [filteredAccounts]);
   const filteredAccountNames = useMemo(
     () => filteredAccounts.map(getAccountName).filter(Boolean),
     [filteredAccounts]
@@ -3042,6 +3161,17 @@ export function DashboardPage() {
         ) : accountViewMode === 'table' ? (
           <div className={styles.accountTableShell}>
             <table className={styles.accountTable}>
+              <colgroup>
+                <col className={styles.accountSelectColumn} />
+                <col className={styles.accountIdentityColumn} />
+                <col className={styles.accountStatusColumn} />
+                <col className={styles.accountLoadColumn} />
+                <col className={styles.accountQualityColumn} />
+                <col className={styles.accountProxyColumn} />
+                <col className={styles.accountAuthColumn} />
+                <col className={styles.accountQuotaColumn} />
+                <col className={styles.accountActionsColumn} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>
@@ -3061,21 +3191,36 @@ export function DashboardPage() {
                       />
                     </label>
                   </th>
-                  <th>账号</th>
+                  <th>账号 / 套餐</th>
                   <th>状态</th>
-                  <th>RPM</th>
-                  <th>会话</th>
-                  <th>24h 质量</th>
+                  <th>负载</th>
+                  <th>24h / 最近</th>
                   <th>代理</th>
-                  <th>认证</th>
-                  <th>最近使用</th>
-                  <th>有效期</th>
+                  <th>认证 / 有效期</th>
                   <th>额度</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredAccounts.map((account) => {
+                {accountSections.map((section) => (
+                  <Fragment key={section.key}>
+                    <tr className={styles.accountSectionRow}>
+                      <td colSpan={9}>
+                        <div className={styles.accountSectionHeader}>
+                          <div>
+                            <strong>{section.title}</strong>
+                            <span>{section.detail}</span>
+                          </div>
+                          <em>{section.accounts.length}</em>
+                        </div>
+                      </td>
+                    </tr>
+                    {section.accounts.length === 0 ? (
+                      <tr className={styles.accountSectionEmptyRow}>
+                        <td colSpan={9}>{section.emptyText}</td>
+                      </tr>
+                    ) : (
+                      section.accounts.map((account) => {
                   const record = account as Record<string, unknown>;
                   const name = String(account.name ?? '').trim();
                   const quotaDetail = name ? quotaByAccount[name] : undefined;
@@ -3087,6 +3232,7 @@ export function DashboardPage() {
                   const qualityRate =
                     quality.requests > 0 ? Math.round((quality.success / quality.requests) * 100) : 100;
                   const permanentError = claudePermanentAccountError(record);
+                  const planBadge = accountPlanBadge(record, quotaDetail);
                   const quotaText =
                     quotaDetail?.status === 'success'
                       ? quotaDetail.windows
@@ -3124,6 +3270,17 @@ export function DashboardPage() {
                         <div className={styles.accountTableIdentity}>
                           <strong>{getAccountTitle(account)}</strong>
                           <span>{name}</span>
+                          <span className={styles.accountPlanLine}>
+                            <span
+                              className={`${styles.accountPlanBadge} ${accountPlanToneClass(planBadge.tone)}`}
+                              title={planBadge.detail ? `${planBadge.label} / ${planBadge.detail}` : planBadge.label}
+                            >
+                              {planBadge.label}
+                            </span>
+                            {planBadge.detail ? (
+                              <span className={styles.accountPlanDetail}>{planBadge.detail}</span>
+                            ) : null}
+                          </span>
                         </div>
                       </td>
                       <td>
@@ -3131,16 +3288,22 @@ export function DashboardPage() {
                           {accountStateLabel(state)}
                         </span>
                       </td>
-                      <td className={styles.accountTableMetric}>
-                        {runtime.currentRpm}/{runtime.rpmLimit || '不限'}
-                      </td>
-                      <td className={styles.accountTableMetric}>
-                        {runtime.activeSessions}/{runtime.maxSessions || '不限'}
+                      <td>
+                        <span className={styles.accountTableStack}>
+                          <strong>
+                            RPM {runtime.currentRpm}/{runtime.rpmLimit || '不限'}
+                          </strong>
+                          <span>
+                            会话 {runtime.activeSessions}/{runtime.maxSessions || '不限'}
+                          </span>
+                        </span>
                       </td>
                       <td>
                         <span className={styles.accountTableStack}>
                           <strong>{quality.requests} 请求</strong>
-                          <span>{qualityRate}% / 429 {quality.rateLimited}</span>
+                          <span>
+                            {qualityRate}% / 429 {quality.rateLimited} / {formatDate(runtime.lastUsedAt)}
+                          </span>
                         </span>
                       </td>
                       <td>
@@ -3148,9 +3311,12 @@ export function DashboardPage() {
                           {proxyUrl || '默认'}
                         </span>
                       </td>
-                      <td>{claudeAuthMethodText(record)}</td>
-                      <td>{formatDate(runtime.lastUsedAt)}</td>
-                      <td>{formatDate(record.expires_at ?? record.expiresAt)}</td>
+                      <td>
+                        <span className={styles.accountTableStack}>
+                          <strong>{claudeAuthMethodText(record)}</strong>
+                          <span>{formatDate(record.expires_at ?? record.expiresAt)}</span>
+                        </span>
+                      </td>
                       <td>
                         <span className={styles.accountTableQuota}>{quotaText}</span>
                       </td>
@@ -3180,13 +3346,29 @@ export function DashboardPage() {
                       </td>
                     </tr>
                   );
-                })}
+                })
+                    )}
+                  </Fragment>
+                ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <div className={styles.accountGrid}>
-            {filteredAccounts.map((account) => {
+          <div className={styles.accountSectionStack}>
+            {accountSections.map((section) => (
+              <section key={section.key} className={styles.accountGroup}>
+                <div className={styles.accountGroupHeader}>
+                  <div>
+                    <h3>{section.title}</h3>
+                    <span>{section.detail}</span>
+                  </div>
+                  <em>{section.accounts.length}</em>
+                </div>
+                {section.accounts.length === 0 ? (
+                  <div className={styles.accountGroupEmpty}>{section.emptyText}</div>
+                ) : (
+                  <div className={styles.accountGrid}>
+                    {section.accounts.map((account) => {
               const record = account as Record<string, unknown>;
               const name = String(account.name ?? '').trim();
               const quotaDetail = name ? quotaByAccount[name] : undefined;
@@ -3425,6 +3607,10 @@ export function DashboardPage() {
                 </article>
               );
             })}
+                  </div>
+                )}
+              </section>
+            ))}
           </div>
         )}
       </section>

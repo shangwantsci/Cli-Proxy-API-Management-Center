@@ -791,6 +791,76 @@
   }
 }
 
+.accountSectionStack {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+}
+
+.accountGroup {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  min-width: 0;
+}
+
+.accountGroupHeader,
+.accountSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  min-width: 0;
+
+  strong,
+  h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+
+  span {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  em {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    height: 24px;
+    padding: 0 9px;
+    border: 1px solid var(--border-color);
+    border-radius: $radius-sm;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.accountGroupHeader {
+  padding: 0 2px;
+}
+
+.accountGroupEmpty {
+  padding: $spacing-md;
+  border: 1px dashed var(--border-color);
+  border-radius: $radius-sm;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--bg-secondary) 68%, transparent);
+  font-size: 13px;
+}
+
 .accountFilters {
   display: grid;
   grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(150px, 1fr)) auto;
@@ -978,13 +1048,13 @@
 
 .accountTable {
   width: 100%;
-  min-width: 1280px;
+  min-width: 1060px;
   border-collapse: collapse;
   table-layout: fixed;
 
   th,
   td {
-    padding: 10px 12px;
+    padding: 9px 10px;
     border-bottom: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
     text-align: left;
     vertical-align: middle;
@@ -1015,6 +1085,42 @@
   }
 }
 
+.accountSelectColumn {
+  width: 38px;
+}
+
+.accountIdentityColumn {
+  width: 22%;
+}
+
+.accountStatusColumn {
+  width: 96px;
+}
+
+.accountLoadColumn {
+  width: 120px;
+}
+
+.accountQualityColumn {
+  width: 150px;
+}
+
+.accountProxyColumn {
+  width: 16%;
+}
+
+.accountAuthColumn {
+  width: 132px;
+}
+
+.accountQuotaColumn {
+  width: 16%;
+}
+
+.accountActionsColumn {
+  width: 162px;
+}
+
 .accountTableRow {
   cursor: pointer;
 
@@ -1022,6 +1128,30 @@
     outline: 2px solid color-mix(in srgb, var(--primary-color) 72%, transparent);
     outline-offset: -2px;
     background: color-mix(in srgb, var(--primary-color) 7%, transparent);
+  }
+}
+
+.accountSectionRow {
+  background: color-mix(in srgb, var(--bg-secondary) 78%, var(--bg-primary));
+
+  td {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
+  &:hover {
+    background: color-mix(in srgb, var(--bg-secondary) 78%, var(--bg-primary));
+  }
+}
+
+.accountSectionEmptyRow {
+  td {
+    color: var(--text-tertiary);
+    font-size: 12px;
+  }
+
+  &:hover {
+    background: transparent;
   }
 }
 
@@ -1066,6 +1196,71 @@
   }
 }
 
+.accountPlanLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.accountPlanBadge {
+  --plan-accent: var(--text-tertiary);
+  --plan-bg: color-mix(in srgb, var(--text-tertiary) 10%, transparent);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  max-width: 72px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--plan-accent) 34%, transparent);
+  border-radius: $radius-sm;
+  color: var(--plan-accent);
+  background: var(--plan-bg);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.accountPlanDetail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountPlanMax {
+  --plan-accent: #b45309;
+  --plan-bg: rgba(245, 158, 11, 0.14);
+}
+
+.accountPlanPro {
+  --plan-accent: #2563eb;
+  --plan-bg: rgba(37, 99, 235, 0.12);
+}
+
+.accountPlanTeam {
+  --plan-accent: #0f766e;
+  --plan-bg: rgba(13, 148, 136, 0.12);
+}
+
+.accountPlanFree {
+  --plan-accent: #64748b;
+  --plan-bg: rgba(100, 116, 139, 0.12);
+}
+
+.accountPlanUnknown {
+  --plan-accent: var(--text-tertiary);
+  --plan-bg: color-mix(in srgb, var(--text-tertiary) 10%, transparent);
+}
+
 .accountTableMetric {
   color: var(--text-primary);
   font-weight: 800;
@@ -1095,8 +1290,13 @@
 .accountTableActions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: flex-end;
+  gap: 4px;
   min-width: 0;
+
+  button {
+    padding-inline: 8px;
+  }
 }
 
 .drawerBackdrop {
