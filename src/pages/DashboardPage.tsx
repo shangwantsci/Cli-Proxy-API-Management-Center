@@ -129,6 +129,7 @@ interface AccountQuotaDetail {
   organizationName?: string;
   accountEmail?: string;
   extraUsage?: ClaudeExtraUsage | null;
+  note?: string;
   error?: string;
 }
 
@@ -306,6 +307,16 @@ function readNumber(source: Record<string, unknown>, keys: string[], defaultValu
     if (Number.isFinite(parsed)) return parsed;
   }
   return defaultValue;
+}
+
+function readOptionalNumber(source: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = source[key];
+    if (value === undefined || value === null || value === '') continue;
+    const parsed = typeof value === 'number' ? value : Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 function readStatusReason(record: Record<string, unknown>): string {
@@ -604,6 +615,118 @@ function accountAuthSource(record: Record<string, unknown>): string {
   return '';
 }
 
+function scopeIncludes(scope: string, value: string): boolean {
+  return scope
+    .toLowerCase()
+    .split(/\s+/)
+    .some((part) => part === value);
+}
+
+function isSetupTokenAccount(record: Record<string, unknown>): boolean {
+  const metadata = readRecord(record.metadata);
+  const source = accountAuthSource(record);
+  const authKind =
+    readString(record, ['auth_kind', 'authKind']).toLowerCase() ||
+    readString(metadata ?? {}, ['auth_kind', 'authKind']).toLowerCase();
+  if (source === 'claude_setup_token' || authKind === 'setup_token') return true;
+  const scope =
+    readString(record, ['scope']).toLowerCase() ||
+    readString(metadata ?? {}, ['scope']).toLowerCase();
+  return (
+    scopeIncludes(scope, 'user:inference') &&
+    !scopeIncludes(scope, 'user:profile') &&
+    !scopeIncludes(scope, 'user:office')
+  );
+}
+
+function setupTokenQuotaDetail(record: Record<string, unknown>): AccountQuotaDetail {
+  const metadata = readRecord(record.metadata);
+  const planLabel =
+    readString(record, ['plan_type', 'planType']) ||
+    readString(metadata ?? {}, ['plan_type', 'planType']) ||
+    'Setup Token';
+  const sessionStatus =
+    readString(record, ['session_window_status', 'sessionWindowStatus']) ||
+    readString(metadata ?? {}, ['session_window_status', 'sessionWindowStatus']);
+  const fiveHourUtilization = setupTokenUtilizationPercent(
+    readOptionalNumber(record, ['session_window_utilization', 'sessionWindowUtilization']) ??
+      readOptionalNumber(metadata ?? {}, ['session_window_utilization', 'sessionWindowUtilization']),
+    sessionStatus
+  );
+  const fiveHourResetMs =
+    parseDateMs(record.session_window_end ?? record.sessionWindowEnd) ||
+    parseDateMs(metadata?.session_window_end ?? metadata?.sessionWindowEnd);
+  const sevenDayUtilization = setupTokenUtilizationPercent(
+    readOptionalNumber(record, ['passive_usage_7d_utilization', 'passiveUsage7dUtilization']) ??
+      readOptionalNumber(metadata ?? {}, ['passive_usage_7d_utilization', 'passiveUsage7dUtilization'])
+  );
+  const sevenDayResetMs =
+    parseDateMs(record.passive_usage_7d_reset ?? record.passiveUsage7dReset) ||
+    parseDateMs(metadata?.passive_usage_7d_reset ?? metadata?.passiveUsage7dReset);
+  const windows: AccountQuotaWindow[] = [];
+  if (fiveHourResetMs || fiveHourUtilization !== null || sessionStatus) {
+    windows.push(setupTokenWindow('five-hour', '5 小时窗口', fiveHourUtilization, fiveHourResetMs));
+  }
+  if (sevenDayResetMs || sevenDayUtilization !== null) {
+    windows.push(setupTokenWindow('seven-day', '7 天总额度', sevenDayUtilization, sevenDayResetMs));
+  }
+  return {
+    status: 'success',
+    windows,
+    planLabel,
+    subscriptionStatus: windows.length > 0 ? '长期授权，被动额度采样' : '长期授权，等待额度采样',
+    accountEmail:
+      readString(record, ['email', 'account_email', 'accountEmail']) ||
+      readString(metadata ?? {}, ['email']),
+    note:
+      windows.length > 0
+        ? 'Setup Token 额度来自上游响应头被动采样；官方 profile/office 额度接口不可读。'
+        : 'Setup Token 长期授权有效；等待下一次请求后从上游响应头采样额度。',
+  };
+}
+
+function setupTokenUtilizationPercent(value: number | null, status = ''): number | null {
+  if (value !== null) {
+    return clampPercent(value <= 1 ? value * 100 : value);
+  }
+  switch (status) {
+    case 'rejected':
+      return 100;
+    case 'allowed_warning':
+      return 80;
+    case 'allowed':
+      return 0;
+    default:
+      return null;
+  }
+}
+
+function setupTokenWindow(
+  id: string,
+  label: string,
+  usedPercent: number | null,
+  resetMs: number
+): AccountQuotaWindow {
+  return {
+    id,
+    label,
+    usedPercent,
+    remainingPercent: usedPercent === null ? null : Math.max(0, Math.min(100, 100 - usedPercent)),
+    resetLabel: resetMs ? formatQuotaResetTime(new Date(resetMs).toISOString()) : '-',
+  };
+}
+
+function accountQuotaDetail(
+  account: AuthFileItem,
+  existing?: AccountQuotaDetail
+): AccountQuotaDetail | undefined {
+  const record = account as Record<string, unknown>;
+  if (isSetupTokenAccount(record) && existing?.status !== 'loading') {
+    return setupTokenQuotaDetail(record);
+  }
+  return existing;
+}
+
 function accountImportSource(record: Record<string, unknown>): AccountImportSource {
   const source = readString(record, ['import_source', 'importSource']).toLowerCase();
   if (source === 'bulk_session_import' || source === 'bulk' || source === 'batch') {
@@ -882,8 +1005,15 @@ function accountPlanBadge(
     readString(record, ['plan_type', 'planType']) ||
     readString(metadata ?? {}, ['plan_type', 'planType']) ||
     readString(attributes ?? {}, ['plan_type', 'planType']);
+  const persistedDetail =
+    readString(record, ['subscription_status', 'subscriptionStatus']) ||
+    readString(metadata ?? {}, ['subscription_status', 'subscriptionStatus']) ||
+    readString(record, ['subscription_tier', 'subscriptionTier']) ||
+    readString(metadata ?? {}, ['subscription_tier', 'subscriptionTier']) ||
+    readString(record, ['organization_name', 'organizationName']) ||
+    readString(metadata ?? {}, ['organization_name', 'organizationName']);
 
-  if (rawPlan) return normalizePlanBadge(rawPlan);
+  if (rawPlan) return normalizePlanBadge(rawPlan, persistedDetail || undefined);
   return { label: '待刷新', tone: 'unknown' };
 }
 
@@ -917,6 +1047,9 @@ function claudeWindowLabel(labelKey: string, fallback: string): string {
 
 async function fetchClaudeAccountQuota(account: AuthFileItem): Promise<AccountQuotaDetail> {
   const record = account as Record<string, unknown>;
+  if (isSetupTokenAccount(record)) {
+    return setupTokenQuotaDetail(record);
+  }
   const authIndex = normalizeAuthIndex(record['auth_index'] ?? account.authIndex);
   if (!authIndex) {
     throw new Error('该账号缺少 auth_index，无法查询额度');
@@ -1401,7 +1534,7 @@ export function DashboardPage() {
   const stats = useMemo(() => {
     const states = accounts.map((account) => {
       const name = String(account.name ?? '').trim();
-      return quotaDetailCoolingWindow(name ? quotaByAccount[name] : undefined)
+      return quotaDetailCoolingWindow(accountQuotaDetail(account, name ? quotaByAccount[name] : undefined))
         ? 'quotaCooling'
         : getAccountState(account);
     });
@@ -1470,7 +1603,9 @@ export function DashboardPage() {
     return accounts.filter((account) => {
       const record = account as Record<string, unknown>;
       const name = getAccountName(account);
-      const quotaCoolingWindow = quotaDetailCoolingWindow(name ? quotaByAccount[name] : undefined);
+      const quotaCoolingWindow = quotaDetailCoolingWindow(
+        accountQuotaDetail(account, name ? quotaByAccount[name] : undefined)
+      );
       const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
       if (!accountMatchesStateFilter(account, state, accountStateFilter)) return false;
       if (!accountMatchesProxyFilter(record, accountProxyFilter)) return false;
@@ -1531,7 +1666,7 @@ export function DashboardPage() {
     const stateCounts = accounts.reduce<Record<AccountState, number>>(
       (counts, account) => {
         const name = getAccountName(account);
-        const state = quotaDetailCoolingWindow(name ? quotaByAccount[name] : undefined)
+        const state = quotaDetailCoolingWindow(accountQuotaDetail(account, name ? quotaByAccount[name] : undefined))
           ? 'quotaCooling'
           : getAccountState(account);
         counts[state] += 1;
@@ -1556,7 +1691,11 @@ export function DashboardPage() {
         const record = account as Record<string, unknown>;
         const runtime = readRuntimeStats(record);
         const quality = readQuality24h(record);
-        const state = getAccountState(account);
+        const name = getAccountName(account);
+        const quotaCoolingWindow = quotaDetailCoolingWindow(
+          accountQuotaDetail(account, name ? quotaByAccount[name] : undefined)
+        );
+        const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
         const rpmPressure = runtime.rpmLimit > 0 ? runtime.currentRpm / runtime.rpmLimit : 0;
         const sessionPressure =
           runtime.maxSessions > 0 ? runtime.activeSessions / runtime.maxSessions : 0;
@@ -2218,7 +2357,7 @@ export function DashboardPage() {
         ...prev,
         [name]: detail,
       }));
-      showNotification('订阅与额度信息已刷新', 'success');
+      showNotification(detail.note || '订阅与额度信息已刷新', 'success');
       void refreshSingleAccountSnapshot(name).catch(() => {});
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '订阅与额度查询失败';
@@ -2296,7 +2435,8 @@ export function DashboardPage() {
   const renderAccountDetailDrawer = (account: AuthFileItem) => {
     const record = account as Record<string, unknown>;
     const name = getAccountName(account);
-    const quotaDetail = name ? quotaByAccount[name] : undefined;
+    const passiveQuotaAccount = isSetupTokenAccount(record);
+    const quotaDetail = accountQuotaDetail(account, name ? quotaByAccount[name] : undefined);
     const quotaCoolingWindow = quotaDetailCoolingWindow(quotaDetail);
     const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
     const recent = normalizeRecentRequestBuckets(account.recent_requests ?? account.recentRequests);
@@ -2425,18 +2565,22 @@ export function DashboardPage() {
                     ? '账号已被上游禁用，额度信息仅供历史参考'
                     : quotaDetail?.status === 'success'
                       ? `${quotaDetail.planLabel || '未知套餐'}${quotaDetail.subscriptionStatus ? ` / ${quotaDetail.subscriptionStatus}` : ''}`
-                      : '按需查询上游用量'}
+                      : passiveQuotaAccount
+                        ? '被动采样额度'
+                        : '按需查询上游用量'}
                 </span>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={quotaDetail?.status === 'loading'}
-                disabled={Boolean(permanentError)}
-                onClick={() => handleRefreshAccountQuota(account)}
-              >
-                刷新额度
-              </Button>
+              {!passiveQuotaAccount ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={quotaDetail?.status === 'loading'}
+                  disabled={Boolean(permanentError)}
+                  onClick={() => handleRefreshAccountQuota(account)}
+                >
+                  刷新额度
+                </Button>
+              ) : null}
             </div>
             {permanentError ? (
               <div className={styles.quotaError}>
@@ -2463,13 +2607,17 @@ export function DashboardPage() {
                     </div>
                   ))
                 ) : (
-                  <div className={styles.quotaEmpty}>上游没有返回可展示的额度窗口</div>
+                  <div className={styles.quotaEmpty}>{quotaDetail.note || '上游没有返回可展示的额度窗口'}</div>
                 )}
               </div>
             ) : quotaDetail?.status === 'error' && !permanentError ? (
               <div className={styles.quotaError}>{quotaDetail.error || '额度查询失败'}</div>
             ) : permanentError ? null : (
-              <div className={styles.quotaEmpty}>点击刷新额度后显示订阅、剩余额度和重置时间。</div>
+              <div className={styles.quotaEmpty}>
+                {passiveQuotaAccount
+                  ? '等待下一次请求后显示被动额度。'
+                  : '点击刷新额度后显示订阅、剩余额度和重置时间。'}
+              </div>
             )}
           </div>
 
@@ -3282,7 +3430,8 @@ export function DashboardPage() {
                       section.accounts.map((account) => {
                   const record = account as Record<string, unknown>;
                   const name = String(account.name ?? '').trim();
-                  const quotaDetail = name ? quotaByAccount[name] : undefined;
+                  const passiveQuotaAccount = isSetupTokenAccount(record);
+                  const quotaDetail = accountQuotaDetail(account, name ? quotaByAccount[name] : undefined);
                   const quotaCoolingWindow = quotaDetailCoolingWindow(quotaDetail);
                   const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
                   const proxyUrl = readString(record, ['proxy_url', 'proxyUrl']);
@@ -3297,7 +3446,7 @@ export function DashboardPage() {
                       ? quotaDetail.windows
                           .slice(0, 2)
                           .map((window) => `${window.label} ${formatQuotaPercent(window.remainingPercent)}`)
-                          .join(' / ') || '无窗口'
+                          .join(' / ') || quotaDetail.note || '无窗口'
                       : quotaDetail?.status === 'error'
                         ? '刷新失败'
                         : quotaRuntimeText(record);
@@ -3381,15 +3530,17 @@ export function DashboardPage() {
                       </td>
                       <td>
                         <div className={styles.accountTableActions} onClick={(event) => event.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            loading={quotaDetail?.status === 'loading'}
-                            disabled={Boolean(permanentError)}
-                            onClick={() => handleRefreshAccountQuota(account)}
-                          >
-                            额度
-                          </Button>
+                          {!passiveQuotaAccount ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={quotaDetail?.status === 'loading'}
+                              disabled={Boolean(permanentError)}
+                              onClick={() => handleRefreshAccountQuota(account)}
+                            >
+                              额度
+                            </Button>
+                          ) : null}
                           <Button variant="secondary" size="sm" onClick={() => openEditor(account)}>
                             设置
                           </Button>
@@ -3430,7 +3581,8 @@ export function DashboardPage() {
                     {section.accounts.map((account) => {
               const record = account as Record<string, unknown>;
               const name = String(account.name ?? '').trim();
-              const quotaDetail = name ? quotaByAccount[name] : undefined;
+              const passiveQuotaAccount = isSetupTokenAccount(record);
+              const quotaDetail = accountQuotaDetail(account, name ? quotaByAccount[name] : undefined);
               const quotaCoolingWindow = quotaDetailCoolingWindow(quotaDetail);
               const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
               const recent = normalizeRecentRequestBuckets(
@@ -3572,18 +3724,22 @@ export function DashboardPage() {
                             ? '账号已被上游禁用，额度信息仅供历史参考'
                             : quotaDetail?.status === 'success'
                             ? `${quotaDetail.planLabel || '未知套餐'}${quotaDetail.subscriptionStatus ? ` / ${quotaDetail.subscriptionStatus}` : ''}`
-                            : '按需查询上游用量'}
+                            : passiveQuotaAccount
+                              ? '被动采样额度'
+                              : '按需查询上游用量'}
                         </span>
                       </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        loading={quotaDetail?.status === 'loading'}
-                        disabled={Boolean(permanentError)}
-                        onClick={() => handleRefreshAccountQuota(account)}
-                      >
-                        刷新额度
-                      </Button>
+                      {!passiveQuotaAccount ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          loading={quotaDetail?.status === 'loading'}
+                          disabled={Boolean(permanentError)}
+                          onClick={() => handleRefreshAccountQuota(account)}
+                        >
+                          刷新额度
+                        </Button>
+                      ) : null}
                     </div>
                     {permanentError ? (
                       <div className={styles.quotaError}>
@@ -3620,13 +3776,19 @@ export function DashboardPage() {
                             </div>
                           ))
                         ) : (
-                          <div className={styles.quotaEmpty}>上游没有返回可展示的额度窗口</div>
+                          <div className={styles.quotaEmpty}>
+                            {quotaDetail.note || '上游没有返回可展示的额度窗口'}
+                          </div>
                         )}
                       </div>
                     ) : quotaDetail?.status === 'error' && !permanentError ? (
                       <div className={styles.quotaError}>{quotaDetail.error || '额度查询失败'}</div>
                     ) : permanentError ? null : (
-                      <div className={styles.quotaEmpty}>点击刷新额度后显示订阅、剩余额度和重置时间。</div>
+                      <div className={styles.quotaEmpty}>
+                        {passiveQuotaAccount
+                          ? '等待下一次请求后显示被动额度。'
+                          : '点击刷新额度后显示订阅、剩余额度和重置时间。'}
+                      </div>
                     )}
                   </div>
                   <div className={styles.accountActions}>
