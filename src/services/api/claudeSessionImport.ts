@@ -3,6 +3,7 @@ import { apiClient } from './client';
 export interface ClaudeSessionImportStartRequest {
   sourceUrl?: string;
   apiPath?: string;
+  sessionKeys?: string[];
   proxyUrl?: string;
   prefix?: string;
   note?: string;
@@ -52,6 +53,7 @@ export interface ClaudeSessionImportStartResponse {
 const toPayload = (payload: ClaudeSessionImportStartRequest) => ({
   source_url: payload.sourceUrl || undefined,
   api_path: payload.apiPath || undefined,
+  session_keys: payload.sessionKeys?.length ? payload.sessionKeys : undefined,
   proxy_url: payload.proxyUrl || undefined,
   prefix: payload.prefix || undefined,
   note: payload.note || undefined,

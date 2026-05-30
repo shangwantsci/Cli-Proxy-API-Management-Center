@@ -160,6 +160,11 @@
   padding: $spacing-lg;
 }
 
+.importButtonStack {
+  display: grid;
+  gap: $spacing-sm;
+}
+
 .panelHeader,
 .sectionHeader,
 .modalHeader {
@@ -1797,6 +1802,13 @@
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 18%, transparent);
     }
   }
+}
+
+.textareaField textarea.sessionKeyTextarea {
+  min-height: 220px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .modalActions {

@@ -70,7 +70,7 @@ type AccountState =
 
 type AccountStateFilter = AccountState | 'all' | 'banned';
 type AccountProxyFilter = 'all' | 'withProxy' | 'defaultProxy' | 'direct';
-type AccountAuthFilter = 'all' | 'claude_code_cli' | 'claude_platform' | 'unknown';
+type AccountAuthFilter = 'all' | 'claude_code_cli' | 'claude_platform' | 'claude_setup_token' | 'unknown';
 type AccountViewMode = 'table' | 'cards';
 type AccountImportSource = 'manual' | 'bulk_session_import';
 
@@ -171,6 +171,7 @@ const ACCOUNT_AUTH_FILTER_OPTIONS = [
   { value: 'all', label: '全部认证' },
   { value: 'claude_code_cli', label: 'CLI OAuth' },
   { value: 'claude_platform', label: 'Platform OAuth' },
+  { value: 'claude_setup_token', label: 'Setup Token' },
   { value: 'unknown', label: '未知认证' },
 ];
 
@@ -212,6 +213,19 @@ function splitApiKeyDraft(value: string): string[] {
   const seen = new Set<string>();
   return value
     .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter((item) => {
+      if (!item) return false;
+      if (seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
+function splitSessionKeyDraft(value: string): string[] {
+  const seen = new Set<string>();
+  return value
+    .split(/\r?\n/)
     .map((item) => item.trim())
     .filter((item) => {
       if (!item) return false;
@@ -586,6 +600,7 @@ function accountAuthSource(record: Record<string, unknown>): string {
   const label = claudeAuthMethodText(record).toLowerCase();
   if (label.includes('cli')) return 'claude_code_cli';
   if (label.includes('platform')) return 'claude_platform';
+  if (label.includes('setup token')) return 'claude_setup_token';
   return '';
 }
 
@@ -989,6 +1004,8 @@ function claudeAuthMethodText(record: Record<string, unknown>): string {
       return 'CLI OAuth';
     case 'claude_platform':
       return 'Platform OAuth';
+    case 'claude_setup_token':
+      return 'Setup Token OAuth';
     default:
       return '未知';
   }
@@ -1198,6 +1215,9 @@ export function DashboardPage() {
   const [importing, setImporting] = useState(false);
   const [sessionKey, setSessionKey] = useState('');
   const [importProxyUrl, setImportProxyUrl] = useState('');
+  const [manualSessionImportOpen, setManualSessionImportOpen] = useState(false);
+  const [manualSessionKeyDraft, setManualSessionKeyDraft] = useState('');
+  const [startingManualSessionImport, setStartingManualSessionImport] = useState(false);
   const [sessionImportSourceUrl, setSessionImportSourceUrl] = useState('');
   const [sessionImportApiPath, setSessionImportApiPath] = useState('/api/accounts');
   const [sessionImportConcurrency, setSessionImportConcurrency] = useState('10');
@@ -1474,7 +1494,7 @@ export function DashboardPage() {
       {
         key: 'manual',
         title: '手动导入账号',
-        detail: 'OAuth、单个 Cookie / sessionKey 导入；旧账号默认归入这里',
+        detail: 'OAuth、单个 Cookie / sessionKey、批量粘贴 sessionKey 导入；旧账号默认归入这里',
         emptyText: '当前筛选下没有手动导入账号',
         accounts: manual,
       },
@@ -1706,6 +1726,33 @@ export function DashboardPage() {
     }
     return job;
   }, [loadAccounts, loadProxyPool]);
+
+  const handleStartManualSessionImport = async () => {
+    const sessionKeys = splitSessionKeyDraft(manualSessionKeyDraft);
+    if (sessionKeys.length === 0) {
+      showNotification('请先粘贴至少一个 sessionKey', 'error');
+      return;
+    }
+    setStartingManualSessionImport(true);
+    try {
+      const response = await claudeSessionImportApi.start({
+        sessionKeys,
+        concurrency: parsePositiveInteger(sessionImportConcurrency, 10),
+        delayMinMs: parsePositiveInteger(sessionImportDelayMin, 200),
+        delayMaxMs: parsePositiveInteger(sessionImportDelayMax, 800),
+      });
+      setSessionImportJob(response.job);
+      setManualSessionImportOpen(false);
+      setManualSessionKeyDraft('');
+      showNotification(`批量粘贴导入任务已启动：${sessionKeys.length} 个账号`, 'success');
+      void refreshSessionImportJob(response.job_id);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '批量粘贴导入任务启动失败';
+      showNotification(sanitizeSensitiveText(message), 'error');
+    } finally {
+      setStartingManualSessionImport(false);
+    }
+  };
 
   useEffect(() => {
     if (!sessionImportJob || sessionImportJob.status !== 'running') return undefined;
@@ -2242,6 +2289,7 @@ export function DashboardPage() {
     .sort((left, right) => right[1] - left[1])
     .slice(0, 6);
   const recentSessionImportResults = (sessionImportJob?.results ?? []).slice(-6).reverse();
+  const manualSessionKeys = useMemo(() => splitSessionKeyDraft(manualSessionKeyDraft), [manualSessionKeyDraft]);
   const renderPortal = (content: ReactNode) =>
     typeof document === 'undefined' ? null : createPortal(content, document.body);
 
@@ -2848,9 +2896,20 @@ export function DashboardPage() {
             placeholder="socks5://user:pass@host:port 或 direct，可留空"
             hint="支持 http://、https://、socks5://、socks5h://；留空使用全局代理，direct/none 强制该账号直连。"
           />
-          <Button onClick={handleCookieImport} loading={importing} fullWidth>
-            Cookie 换授权并加入账号池
-          </Button>
+          <div className={styles.importButtonStack}>
+            <Button onClick={handleCookieImport} loading={importing} fullWidth>
+              Cookie 换授权并加入账号池
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setManualSessionImportOpen(true)}
+              disabled={sessionImportRunning}
+              fullWidth
+            >
+              <IconFileText size={16} />
+              批量粘贴 sessionKey 导入
+            </Button>
+          </div>
 
           <div className={styles.sessionImportBox}>
             <div className={styles.sessionImportHeader}>
@@ -3616,6 +3675,58 @@ export function DashboardPage() {
       </section>
 
       {detailAccount && renderPortal(renderAccountDetailDrawer(detailAccount))}
+
+      {manualSessionImportOpen &&
+        renderPortal(
+          <div className={styles.modalBackdrop} role="presentation">
+            <div className={styles.modal} role="dialog" aria-modal="true" aria-label="批量粘贴导入">
+              <div className={styles.modalHeader}>
+                <div>
+                  <h2>批量粘贴导入</h2>
+                  <p>每行一个 sessionKey；空行和重复项会自动忽略，导入账号归入手动导入分组。</p>
+                </div>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  onClick={() => setManualSessionImportOpen(false)}
+                  aria-label="关闭"
+                  disabled={startingManualSessionImport}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className={styles.textareaField}>
+                <label>sessionKey 列表</label>
+                <textarea
+                  className={styles.sessionKeyTextarea}
+                  value={manualSessionKeyDraft}
+                  onChange={(event) => setManualSessionKeyDraft(event.target.value)}
+                  placeholder="每行粘贴一个 sessionKey"
+                  spellCheck={false}
+                />
+                <span>已识别 {manualSessionKeys.length} 个；导入时会随机使用已启用代理池。</span>
+              </div>
+
+              <div className={styles.modalActions}>
+                <Button
+                  variant="ghost"
+                  onClick={() => setManualSessionImportOpen(false)}
+                  disabled={startingManualSessionImport}
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={handleStartManualSessionImport}
+                  loading={startingManualSessionImport}
+                  disabled={sessionImportRunning || manualSessionKeys.length === 0}
+                >
+                  开始导入
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
       {batchForm &&
         renderPortal(
