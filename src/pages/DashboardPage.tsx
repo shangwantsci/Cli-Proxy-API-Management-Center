@@ -668,7 +668,7 @@ function setupTokenQuotaDetail(record: Record<string, unknown>): AccountQuotaDet
     windows.push(setupTokenWindow('five-hour', '5 小时窗口', fiveHourUtilization, fiveHourResetMs));
   }
   if (sevenDayResetMs || sevenDayUtilization !== null) {
-    windows.push(setupTokenWindow('seven-day', '7 天总额度', sevenDayUtilization, sevenDayResetMs));
+    windows.push(setupTokenWindow('seven-day', '7 天总额度（全模型合并）', sevenDayUtilization, sevenDayResetMs));
   }
   return {
     status: 'success',
@@ -680,7 +680,7 @@ function setupTokenQuotaDetail(record: Record<string, unknown>): AccountQuotaDet
       readString(metadata ?? {}, ['email']),
     note:
       windows.length > 0
-        ? 'Setup Token 额度来自上游响应头被动采样；官方 profile/office 额度接口不可读。'
+        ? '额度来自上游响应头被动采样；7 天为全模型合并额度，被动头不区分 sonnet/opus，单模型额度仅在手动刷新额度时可见。'
         : 'Setup Token 长期授权有效；等待下一次请求后从上游响应头采样额度。',
   };
 }
@@ -2210,7 +2210,17 @@ export function DashboardPage() {
     }
     setSavingBatch(true);
     let success = 0;
+    let skipped = 0;
     for (const name of selectedNames) {
+      // When enabling, skip accounts the upstream has permanently disabled — toggling them
+      // back on has no effect and would only churn the health state.
+      if (!disabled) {
+        const account = accounts.find((item) => getAccountName(item) === name);
+        if (account && isUpstreamDisabledAccount(account as Record<string, unknown>)) {
+          skipped += 1;
+          continue;
+        }
+      }
       try {
         await authFilesApi.setStatus(name, disabled);
         success += 1;
@@ -2223,7 +2233,11 @@ export function DashboardPage() {
     } finally {
       setSavingBatch(false);
     }
-    showNotification(`批量${action}完成：成功 ${success}/${selectedNames.length} 个`, success === selectedNames.length ? 'success' : 'error');
+    const skippedSuffix = skipped > 0 ? `，跳过 ${skipped} 个上游已禁用账号` : '';
+    showNotification(
+      `批量${action}完成：成功 ${success}/${selectedNames.length} 个${skippedSuffix}`,
+      success + skipped === selectedNames.length ? 'success' : 'error'
+    );
   };
 
   const handleBatchDeleteAccounts = async () => {
@@ -2276,6 +2290,11 @@ export function DashboardPage() {
   const handleToggleAccount = async (account: AuthFileItem) => {
     const name = String(account.name ?? '').trim();
     if (!name) return;
+    const permanentError = claudePermanentAccountError(account as Record<string, unknown>);
+    if (permanentError) {
+      showNotification(`该账号已被上游禁用，无法启用/停用：${permanentError.message}`, 'error');
+      return;
+    }
     setTogglingName(name);
     try {
       await authFilesApi.setStatus(name, !account.disabled);
@@ -2639,6 +2658,8 @@ export function DashboardPage() {
             <Button
               variant={account.disabled ? 'primary' : 'ghost'}
               loading={togglingName === name}
+              disabled={Boolean(permanentError)}
+              title={permanentError ? '上游已禁用，不可恢复' : undefined}
               onClick={() => handleToggleAccount(account)}
             >
               {account.disabled ? '启用' : '停用'}
@@ -3548,6 +3569,8 @@ export function DashboardPage() {
                             variant={account.disabled ? 'primary' : 'ghost'}
                             size="sm"
                             loading={togglingName === name}
+                            disabled={Boolean(permanentError)}
+                            title={permanentError ? '上游已禁用，不可恢复' : undefined}
                             onClick={() => handleToggleAccount(account)}
                           >
                             {account.disabled ? '启用' : '停用'}
@@ -3820,6 +3843,8 @@ export function DashboardPage() {
                       variant={account.disabled ? 'primary' : 'ghost'}
                       size="sm"
                       loading={togglingName === name}
+                      disabled={Boolean(permanentError)}
+                      title={permanentError ? '上游已禁用，不可恢复' : undefined}
                       onClick={() => handleToggleAccount(account)}
                     >
                       {account.disabled ? '启用' : '停用'}
