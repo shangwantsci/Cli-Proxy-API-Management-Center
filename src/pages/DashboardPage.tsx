@@ -1355,6 +1355,7 @@ export function DashboardPage() {
   const [sessionImportDelayMin, setSessionImportDelayMin] = useState('200');
   const [sessionImportDelayMax, setSessionImportDelayMax] = useState('800');
   const [sessionImportJob, setSessionImportJob] = useState<ClaudeSessionImportJob | null>(null);
+  const [sessionImportTotal, setSessionImportTotal] = useState(0);
   const [startingSessionImport, setStartingSessionImport] = useState(false);
   const [cancelingSessionImport, setCancelingSessionImport] = useState(false);
   const [proxyPool, setProxyPool] = useState<ProxyPoolEntry[]>([]);
@@ -1879,6 +1880,7 @@ export function DashboardPage() {
         delayMaxMs: parsePositiveInteger(sessionImportDelayMax, 800),
       });
       setSessionImportJob(response.job);
+      setSessionImportTotal(sessionKeys.length);
       setManualSessionImportOpen(false);
       setManualSessionKeyDraft('');
       showNotification(`批量粘贴导入任务已启动：${sessionKeys.length} 个账号`, 'success');
@@ -1923,6 +1925,7 @@ export function DashboardPage() {
         delayMaxMs: parsePositiveInteger(sessionImportDelayMax, 800),
       });
       setSessionImportJob(response.job);
+      setSessionImportTotal(0);
       showNotification('批量导入任务已启动', 'success');
       void refreshSessionImportJob(response.job_id);
     } catch (err: unknown) {
@@ -2436,8 +2439,8 @@ export function DashboardPage() {
 
   const sessionImportRunning = sessionImportJob?.status === 'running';
   const sessionImportProgress =
-    sessionImportJob && sessionImportJob.total_fetched > 0
-      ? Math.round((sessionImportJob.total_processed / sessionImportJob.total_fetched) * 100)
+    sessionImportJob && sessionImportTotal > 0
+      ? Math.round((sessionImportJob.total_processed / sessionImportTotal) * 100)
       : 0;
   const sessionImportFailures = Object.entries(sessionImportJob?.failure_reasons ?? {})
     .sort((left, right) => right[1] - left[1])

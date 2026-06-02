@@ -24,15 +24,12 @@ export interface ClaudeSessionImportResult {
 export interface ClaudeSessionImportJob {
   id: string;
   status: 'running' | 'completed' | 'failed' | 'canceled';
-  source_url: string;
-  api_endpoint: string;
   proxy_url?: string;
   redacted_proxy_url?: string;
   concurrency: number;
   started_at: string;
   updated_at: string;
   finished_at?: string;
-  total_fetched: number;
   total_processed: number;
   imported: number;
   failed: number;
