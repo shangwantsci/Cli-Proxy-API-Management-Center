@@ -1356,8 +1356,6 @@ export function DashboardPage() {
   const [sessionImportDelayMax, setSessionImportDelayMax] = useState('800');
   const [sessionImportJob, setSessionImportJob] = useState<ClaudeSessionImportJob | null>(null);
   const [sessionImportTotal, setSessionImportTotal] = useState(0);
-  const [startingSessionImport, setStartingSessionImport] = useState(false);
-  const [cancelingSessionImport, setCancelingSessionImport] = useState(false);
   const [proxyPool, setProxyPool] = useState<ProxyPoolEntry[]>([]);
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [adminPasswordDraft, setAdminPasswordDraft] = useState('');
@@ -1914,42 +1912,6 @@ export function DashboardPage() {
       window.clearInterval(timer);
     };
   }, [loadAccounts, loadProxyPool, sessionImportJob]);
-
-  const handleStartSessionImport = async () => {
-    setStartingSessionImport(true);
-    try {
-      const response = await claudeSessionImportApi.start({
-        proxyUrl: importProxyUrl.trim() || undefined,
-        concurrency: parsePositiveInteger(sessionImportConcurrency, 10),
-        delayMinMs: parsePositiveInteger(sessionImportDelayMin, 200),
-        delayMaxMs: parsePositiveInteger(sessionImportDelayMax, 800),
-      });
-      setSessionImportJob(response.job);
-      setSessionImportTotal(0);
-      showNotification('批量导入任务已启动', 'success');
-      void refreshSessionImportJob(response.job_id);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : '批量导入任务启动失败';
-      showNotification(message, 'error');
-    } finally {
-      setStartingSessionImport(false);
-    }
-  };
-
-  const handleCancelSessionImport = async () => {
-    if (!sessionImportJob) return;
-    setCancelingSessionImport(true);
-    try {
-      const job = await claudeSessionImportApi.cancel(sessionImportJob.id);
-      setSessionImportJob(job);
-      showNotification('批量导入任务已取消', 'success');
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : '取消任务失败';
-      showNotification(message, 'error');
-    } finally {
-      setCancelingSessionImport(false);
-    }
-  };
 
   const handleGenerateApiKey = () => {
     const nextKey = makeClientApiKey();
@@ -3082,8 +3044,8 @@ export function DashboardPage() {
           <div className={styles.sessionImportBox}>
             <div className={styles.sessionImportHeader}>
               <div>
-                <strong>批量验证并导入</strong>
-                <span>验证手动粘贴的 sessionKey，有效后按现有 Cookie 换授权流程加入账号池。</span>
+                <strong>批量导入配置与进度</strong>
+                <span>设置批量粘贴导入的并发与延迟，并查看导入任务进度。</span>
               </div>
               {sessionImportJob && (
                 <em className={styles[`sessionImport${sessionImportJob.status}`]}>
@@ -3114,25 +3076,6 @@ export function DashboardPage() {
                 value={sessionImportDelayMax}
                 onChange={(event) => setSessionImportDelayMax(event.target.value)}
               />
-            </div>
-            <div className={styles.sessionImportActions}>
-              <Button
-                onClick={handleStartSessionImport}
-                loading={startingSessionImport}
-                disabled={sessionImportRunning}
-                fullWidth
-              >
-                一键验证并导入有效账号
-              </Button>
-              {sessionImportRunning && (
-                <Button
-                  variant="secondary"
-                  onClick={handleCancelSessionImport}
-                  loading={cancelingSessionImport}
-                >
-                  取消
-                </Button>
-              )}
             </div>
 
             {sessionImportJob && (
