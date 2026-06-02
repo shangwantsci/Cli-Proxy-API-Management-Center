@@ -1351,8 +1351,6 @@ export function DashboardPage() {
   const [manualSessionImportOpen, setManualSessionImportOpen] = useState(false);
   const [manualSessionKeyDraft, setManualSessionKeyDraft] = useState('');
   const [startingManualSessionImport, setStartingManualSessionImport] = useState(false);
-  const [sessionImportSourceUrl, setSessionImportSourceUrl] = useState('');
-  const [sessionImportApiPath, setSessionImportApiPath] = useState('/api/accounts');
   const [sessionImportConcurrency, setSessionImportConcurrency] = useState('10');
   const [sessionImportDelayMin, setSessionImportDelayMin] = useState('200');
   const [sessionImportDelayMax, setSessionImportDelayMax] = useState('800');
@@ -1636,7 +1634,7 @@ export function DashboardPage() {
       {
         key: 'bulk_session_import',
         title: '批量一键导入账号',
-        detail: '通过批量抓取验证并导入流程加入的账号',
+        detail: '通过批量验证并导入流程加入的账号',
         emptyText: '当前筛选下没有批量一键导入账号',
         accounts: bulk,
       },
@@ -1919,8 +1917,6 @@ export function DashboardPage() {
     setStartingSessionImport(true);
     try {
       const response = await claudeSessionImportApi.start({
-        sourceUrl: sessionImportSourceUrl.trim() || undefined,
-        apiPath: sessionImportApiPath.trim() || undefined,
         proxyUrl: importProxyUrl.trim() || undefined,
         concurrency: parsePositiveInteger(sessionImportConcurrency, 10),
         delayMinMs: parsePositiveInteger(sessionImportDelayMin, 200),
@@ -3083,8 +3079,8 @@ export function DashboardPage() {
           <div className={styles.sessionImportBox}>
             <div className={styles.sessionImportHeader}>
               <div>
-                <strong>批量抓取验证并导入</strong>
-                <span>抓取来源中的 sessionKey，验证有效后按现有 Cookie 换授权流程加入账号池。</span>
+                <strong>批量验证并导入</strong>
+                <span>验证手动粘贴的 sessionKey，有效后按现有 Cookie 换授权流程加入账号池。</span>
               </div>
               {sessionImportJob && (
                 <em className={styles[`sessionImport${sessionImportJob.status}`]}>
@@ -3092,20 +3088,7 @@ export function DashboardPage() {
                 </em>
               )}
             </div>
-            <Input
-              label="来源页面 URL"
-              value={sessionImportSourceUrl}
-              onChange={(event) => setSessionImportSourceUrl(event.target.value)}
-              placeholder="留空使用服务端默认抓取来源"
-              hint="默认来源仅在服务端保存；需要临时覆盖时，只能填写后端允许的白名单来源。"
-            />
             <div className={styles.sessionImportGrid}>
-              <Input
-                label="API Path"
-                value={sessionImportApiPath}
-                onChange={(event) => setSessionImportApiPath(event.target.value)}
-                placeholder="/api/accounts"
-              />
               <Input
                 label="并发"
                 type="number"
@@ -3155,16 +3138,27 @@ export function DashboardPage() {
                   <span style={{ width: `${Math.min(100, Math.max(0, sessionImportProgress))}%` }} />
                 </div>
                 <div className={styles.sessionImportStats}>
-                  <span>抓取 {sessionImportJob.total_fetched}</span>
                   <span>处理 {sessionImportJob.total_processed}</span>
                   <span>导入 {sessionImportJob.imported}</span>
                   <span>失败 {sessionImportJob.failed}</span>
                   <span>重复 {sessionImportJob.duplicate}</span>
+                  {sessionImportJob.rejected > 0 && (
+                    <span>已拒绝（上游不可用） {sessionImportJob.rejected}</span>
+                  )}
                 </div>
                 {sessionImportJob.error && <div className={styles.sessionImportError}>{sessionImportJob.error}</div>}
                 {sessionImportFailures.length > 0 && (
                   <div className={styles.sessionImportReasons}>
                     {sessionImportFailures.map(([reason, count]) => (
+                      <span key={reason}>
+                        {reason} · {count}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {sessionImportJob.rejected > 0 && sessionImportJob.rejected_reasons && (
+                  <div className={styles.sessionImportReasons}>
+                    {Object.entries(sessionImportJob.rejected_reasons).map(([reason, count]) => (
                       <span key={reason}>
                         {reason} · {count}
                       </span>
