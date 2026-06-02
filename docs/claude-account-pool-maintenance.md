@@ -88,6 +88,13 @@
 - 代理池：搜索 `proxy pool`、`proxy_url`、`ProxyPool`。
 - 生产部署文档：`F:\claude反代\CLIProxyAPI\docs\production-deployment-23.153.36.12.md`。
 
+## 行为变更记录（2026-06-02）
+
+两处与账号池状态相关的后端行为已调整，前端无需改动（状态分类前端已支持）：
+
+- **一键检测对 setup-token 账号发真实请求**：此前 setup-token 账号（生产号池全部是这类）在一键检测时被短路直接判健康、不发任何网络请求（表现为"不到 1 秒检测完所有账号"）。现已改为对每个 setup-token 账号发一次真实 `POST /v1/messages` 探测（走账号同源代理 IP），按响应分类：2xx=健康(`ok`)、`organization_disabled`/`account_banned` 等永久错=`permanent_disabled`、429=`rate_limited`、5xx/超时/网络错=`unavailable`/需处理。实现见 `internal/api/handlers/management/claude_probe_jobs.go` 的 `runClaudeProbeForAuth` setup-token 分支 + `claudeMessagesProbePOST` + `recordClaudeMessagesProbeHTTPFailure`。非 setup-token（OAuth 全 scope）账号仍走原 profile/usage 探测，行为不变。
+- **手动重认证清除限额冷却**：此前账号被打上"限额冷却"（被动配额 cooldown）后，手动点重认证无法清除——成功 reauth 只重置了认证失效状态，不碰 `Quota`/被动配额字段。现已在 `ReauthenticateClaudeAuthFile` 成功路径调用 `clearClaudeQuotaCooldownState`，清除账号级与 per-model 的配额冷却及被动配额 metadata，使账号立即恢复可用。注意：仅"用户手动重认证"清冷却；conductor 后台自动 refresh 不清（被动配额冷却是其正常生命周期）。
+
 ## 修改账号池 UI 前的检查清单
 
 1. 先确认截图/问题所在路由：
