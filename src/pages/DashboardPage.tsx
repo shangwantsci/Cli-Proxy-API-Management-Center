@@ -1721,9 +1721,9 @@ export function DashboardPage() {
   const mimicryCoverage = useMemo(() => {
     const raw = config?.raw ?? {};
     const claudeHeaders = readRecord(raw['claude-header-defaults']) ?? {};
-    const ua = configText(claudeHeaders['user-agent'], 'claude-cli/2.1.148');
-    const packageVersion = configText(claudeHeaders['package-version'], '0.98.0');
-    const runtimeVersion = configText(claudeHeaders['runtime-version'], 'v24.13.0');
+    const ua = configText(claudeHeaders['user-agent'], 'claude-cli/2.1.161');
+    const packageVersion = configText(claudeHeaders['package-version'], '0.94.0');
+    const runtimeVersion = configText(claudeHeaders['runtime-version'], 'v24.3.0');
     const stableDevice = readBool(claudeHeaders, ['stabilize-device-profile'], true);
 
     const counts = accounts.reduce(
@@ -1804,7 +1804,7 @@ export function DashboardPage() {
       },
       {
         label: 'CLI 指纹',
-        value: configText(claudeHeaders['user-agent'], 'claude-cli/2.1.148'),
+        value: configText(claudeHeaders['user-agent'], 'claude-cli/2.1.161'),
         detail: readBool(claudeHeaders, ['stabilize-device-profile'], true)
           ? '设备画像稳定'
           : '跟随请求动态变化',
