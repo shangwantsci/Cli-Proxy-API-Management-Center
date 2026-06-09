@@ -71,6 +71,7 @@ type AccountState =
 type AccountStateFilter = AccountState | 'all' | 'banned';
 type AccountProxyFilter = 'all' | 'withProxy' | 'defaultProxy' | 'direct';
 type AccountAuthFilter = 'all' | 'claude_code_cli' | 'claude_platform' | 'claude_setup_token' | 'unknown';
+type AccountSubscriptionFilter = 'all' | 'max' | 'pro' | 'team' | 'free' | 'unknown';
 type AccountViewMode = 'table' | 'cards';
 type AccountImportSource = 'manual' | 'bulk_session_import';
 
@@ -174,6 +175,15 @@ const ACCOUNT_AUTH_FILTER_OPTIONS = [
   { value: 'claude_platform', label: 'Platform OAuth' },
   { value: 'claude_setup_token', label: 'Setup Token' },
   { value: 'unknown', label: '未知认证' },
+];
+
+const ACCOUNT_SUBSCRIPTION_FILTER_OPTIONS = [
+  { value: 'all', label: '全部订阅' },
+  { value: 'max', label: 'Max' },
+  { value: 'pro', label: 'Pro' },
+  { value: 'team', label: 'Team' },
+  { value: 'free', label: 'Free' },
+  { value: 'unknown', label: '未知/待刷新' },
 ];
 
 const parsePositiveInteger = (value: string, fallback: number): number => {
@@ -755,6 +765,15 @@ function accountMatchesProxyFilter(
   if (filter === 'withProxy') return proxyUrl !== '';
   if (filter === 'defaultProxy') return proxyUrl === '';
   return normalized === 'direct' || normalized === 'none';
+}
+
+function accountMatchesSubscriptionFilter(
+  record: Record<string, unknown>,
+  quotaDetail: AccountQuotaDetail | undefined,
+  filter: AccountSubscriptionFilter
+): boolean {
+  if (filter === 'all') return true;
+  return accountPlanBadge(record, quotaDetail).tone === filter;
 }
 
 function accountSearchText(account: AuthFileItem): string {
@@ -1370,6 +1389,8 @@ export function DashboardPage() {
   const [accountStateFilter, setAccountStateFilter] = useState<AccountStateFilter>('all');
   const [accountProxyFilter, setAccountProxyFilter] = useState<AccountProxyFilter>('all');
   const [accountAuthFilter, setAccountAuthFilter] = useState<AccountAuthFilter>('all');
+  const [accountSubscriptionFilter, setAccountSubscriptionFilter] =
+    useState<AccountSubscriptionFilter>('all');
   const [accountViewMode, setAccountViewMode] = useState<AccountViewMode>(() =>
     typeof window === 'undefined'
       ? 'table'
@@ -1600,17 +1621,27 @@ export function DashboardPage() {
     return accounts.filter((account) => {
       const record = account as Record<string, unknown>;
       const name = getAccountName(account);
-      const quotaCoolingWindow = quotaDetailCoolingWindow(
-        accountQuotaDetail(account, name ? quotaByAccount[name] : undefined)
-      );
+      const quotaDetail = accountQuotaDetail(account, name ? quotaByAccount[name] : undefined);
+      const quotaCoolingWindow = quotaDetailCoolingWindow(quotaDetail);
       const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
       if (!accountMatchesStateFilter(account, state, accountStateFilter)) return false;
       if (!accountMatchesProxyFilter(record, accountProxyFilter)) return false;
       if (!accountMatchesAuthFilter(record, accountAuthFilter)) return false;
+      if (!accountMatchesSubscriptionFilter(record, quotaDetail, accountSubscriptionFilter)) {
+        return false;
+      }
       if (query && !accountSearchText(account).includes(query)) return false;
       return true;
     });
-  }, [accountAuthFilter, accountProxyFilter, accountSearch, accountStateFilter, accounts, quotaByAccount]);
+  }, [
+    accountAuthFilter,
+    accountProxyFilter,
+    accountSubscriptionFilter,
+    accountSearch,
+    accountStateFilter,
+    accounts,
+    quotaByAccount,
+  ]);
   const accountSections = useMemo<AccountSection[]>(() => {
     const manual: AuthFileItem[] = [];
     const bulk: AuthFileItem[] = [];
@@ -1651,7 +1682,8 @@ export function DashboardPage() {
     accountSearch.trim() !== '' ||
     accountStateFilter !== 'all' ||
     accountProxyFilter !== 'all' ||
-    accountAuthFilter !== 'all';
+    accountAuthFilter !== 'all' ||
+    accountSubscriptionFilter !== 'all';
   const claudeProbeRunning =
     claudeProbeJob?.status === 'running' || claudeProbeJob?.status === 'canceling';
   const claudeProbePercent =
@@ -1995,6 +2027,7 @@ export function DashboardPage() {
     setAccountStateFilter('all');
     setAccountProxyFilter('all');
     setAccountAuthFilter('all');
+    setAccountSubscriptionFilter('all');
   };
 
   const clearClaudeProbeTimer = useCallback(() => {
@@ -3186,6 +3219,14 @@ export function DashboardPage() {
               value={accountAuthFilter}
               options={ACCOUNT_AUTH_FILTER_OPTIONS}
               onChange={(value) => setAccountAuthFilter(value as AccountAuthFilter)}
+            />
+          </div>
+          <div className={styles.filterField}>
+            <span>订阅</span>
+            <Select
+              value={accountSubscriptionFilter}
+              options={ACCOUNT_SUBSCRIPTION_FILTER_OPTIONS}
+              onChange={(value) => setAccountSubscriptionFilter(value as AccountSubscriptionFilter)}
             />
           </div>
           <Button variant="ghost" size="sm" onClick={clearAccountFilters} disabled={!hasAccountFilters}>
