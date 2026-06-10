@@ -25,6 +25,7 @@ export interface Config {
   debug?: boolean;
   proxyUrl?: string;
   requestRetry?: number;
+  claudeMaxConcurrentRequests?: number;
   claudeBillableUsage?: ClaudeBillableUsageConfig;
   claudeMimicryGuard?: ClaudeMimicryGuardConfig;
   quotaExceeded?: QuotaExceededConfig;
@@ -49,6 +50,7 @@ export type RawConfigSection =
   | 'debug'
   | 'proxy-url'
   | 'request-retry'
+  | 'claude-max-concurrent-requests'
   | 'claude-billable-usage'
   | 'claude-mimicry-guard'
   | 'quota-exceeded'

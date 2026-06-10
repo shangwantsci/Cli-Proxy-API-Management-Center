@@ -187,6 +187,7 @@ export function getVisualConfigValidationErrors(
 ): VisualConfigValidationErrors {
   return {
     requestRetry: getNonNegativeIntegerError(values.requestRetry),
+    claudeMaxConcurrentRequests: getNonNegativeIntegerError(values.claudeMaxConcurrentRequests),
     claudeMimicryGuardEventsLimit: getNonNegativeIntegerError(values.claudeMimicryGuardEventsLimit),
     maxRetryCredentials: getNonNegativeIntegerError(values.maxRetryCredentials),
     maxRetryInterval: getNonNegativeIntegerError(values.maxRetryInterval),
@@ -724,6 +725,13 @@ function applyClaudeStrategyVisualChangesToDoc(
     dirtyFields,
     'requestRetry'
   );
+  setManagedIntFromStringInDoc(
+    doc,
+    ['claude-max-concurrent-requests'],
+    values.claudeMaxConcurrentRequests,
+    dirtyFields,
+    'claudeMaxConcurrentRequests'
+  );
   if (docHas(doc, ['claude-billable-usage']) || dirtyFields.has('claudeBillableUsageEnabled')) {
     ensureMapInDoc(doc, ['claude-billable-usage']);
     doc.setIn(['claude-billable-usage', 'enabled'], values.claudeBillableUsageEnabled);
@@ -945,6 +953,7 @@ function getNextDirtyFields(
       'redisUsageQueueRetentionSeconds',
       'passthroughHeaders',
       'claudeBillableUsageEnabled',
+      'claudeMaxConcurrentRequests',
       'claudeMimicryGuardMode',
       'claudeMimicryGuardEventsLimit',
       'disableCooling',
@@ -1279,6 +1288,10 @@ export function useVisualConfig() {
         forceModelPrefix: Boolean(parsed['force-model-prefix']),
         passthroughHeaders: Boolean(parsed['passthrough-headers']),
         requestRetry: String(parsed['request-retry'] ?? DEFAULT_VISUAL_VALUES.requestRetry),
+        claudeMaxConcurrentRequests: String(
+          parsed['claude-max-concurrent-requests'] ??
+            DEFAULT_VISUAL_VALUES.claudeMaxConcurrentRequests
+        ),
         claudeBillableUsageEnabled: parseBooleanDefault(
           claudeBillableUsage?.enabled,
           DEFAULT_VISUAL_VALUES.claudeBillableUsageEnabled
@@ -1474,6 +1487,13 @@ export function useVisualConfig() {
         setBooleanInDoc(doc, ['force-model-prefix'], values.forceModelPrefix);
         setBooleanInDoc(doc, ['passthrough-headers'], values.passthroughHeaders);
         setIntFromStringInDoc(doc, ['request-retry'], values.requestRetry);
+        setManagedIntFromStringInDoc(
+          doc,
+          ['claude-max-concurrent-requests'],
+          values.claudeMaxConcurrentRequests,
+          dirtyFields,
+          'claudeMaxConcurrentRequests'
+        );
         if (
           docHas(doc, ['claude-billable-usage']) ||
           dirtyFields.has('claudeBillableUsageEnabled')

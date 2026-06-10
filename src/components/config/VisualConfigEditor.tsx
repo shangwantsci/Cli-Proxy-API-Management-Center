@@ -200,6 +200,10 @@ export function VisualConfigEditor({
   );
 
   const requestRetryError = getValidationMessage(t, validationErrors?.requestRetry);
+  const claudeMaxConcurrentRequestsError = getValidationMessage(
+    t,
+    validationErrors?.claudeMaxConcurrentRequests
+  );
   const claudeMimicryGuardEventsLimitError = getValidationMessage(
     t,
     validationErrors?.claudeMimicryGuardEventsLimit
@@ -246,7 +250,7 @@ export function VisualConfigEditor({
         id: 'cache',
         title: '缓存命中',
         icon: IconChartLine,
-        errorCount: 0,
+        errorCount: countErrors(['claudeMaxConcurrentRequests']),
       },
       {
         id: 'retry',
@@ -646,6 +650,17 @@ export function VisualConfigEditor({
                   disabled={disabled}
                   hint={`当前：${disabledText(values.streaming.keepaliveSeconds)}`}
                   error={keepaliveError}
+                />
+                <Input
+                  label="Claude 全局并发上限"
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={values.claudeMaxConcurrentRequests}
+                  onChange={(e) => onChange({ claudeMaxConcurrentRequests: e.target.value })}
+                  disabled={disabled}
+                  hint="0 表示不限制；保存后立即限制发往 Claude 上游的在途请求。"
+                  error={claudeMaxConcurrentRequestsError}
                 />
                 <ToggleRow
                   title="扣除伪装注入 Token"
