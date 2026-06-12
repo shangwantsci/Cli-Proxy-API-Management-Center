@@ -306,6 +306,7 @@ export function AuthFilesPage() {
     deletingAll,
     statusUpdating,
     batchStatusUpdating,
+    clearingRuntimeSessions,
     claudeProbeJob,
     claudeProbeRunning,
     fileInputRef,
@@ -325,6 +326,7 @@ export function AuthFilesPage() {
     batchDelete,
     probeClaudeAccounts,
     cancelClaudeProbe,
+    clearClaudeRuntimeSessions,
     refreshClaudeHealthForFiles,
   } = useAuthFilesData();
 
@@ -1425,6 +1427,15 @@ export function AuthFilesPage() {
               一键检测 Claude
             </Button>
             <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => clearClaudeRuntimeSessions()}
+              disabled={disableControls || clearingRuntimeSessions}
+              loading={clearingRuntimeSessions}
+            >
+              清会话
+            </Button>
+            <Button
               size="sm"
               onClick={handleUploadClick}
               disabled={disableControls || uploading}
@@ -1895,6 +1906,19 @@ export function AuthFilesPage() {
                     disabled={disableControls || selectedNames.length === 0 || claudeProbeRunning}
                   >
                     检测选中
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => clearClaudeRuntimeSessions(selectedNames)}
+                    disabled={
+                      disableControls ||
+                      selectedNames.length === 0 ||
+                      clearingRuntimeSessions
+                    }
+                    loading={clearingRuntimeSessions}
+                  >
+                    清选中会话
                   </Button>
                   <Button
                     variant="secondary"

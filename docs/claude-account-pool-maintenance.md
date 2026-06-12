@@ -26,6 +26,7 @@
 - 账号搜索、状态筛选、代理筛选、认证方式筛选
 - 批量选择、批量策略、批量启用/停用
 - 批量删除选中账号
+- 一键清除全部或选中账号的本地会话占用
 - 单账号详情抽屉
 - 单账号额度刷新
 - 单账号设置、重认证、启用/停用、删除
@@ -63,6 +64,7 @@
 
 - `listClaudeHealth()`：读取带健康状态的账号列表。
 - `patchFields(name, fields)`：保存账号代理、优先级、RPM、会话上限、伪装策略等字段。
+- `clearRuntimeSessions(...)`：清除全部或指定账号的本地会话占用；只释放运行态会话槽，不删除账号或认证文件。
 - `setStatus(name, disabled)`：启用或停用账号。
 - `deleteFile(name)`：删除账号文件。
 - `reauthenticateClaude(name)`：重新认证账号。

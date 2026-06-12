@@ -60,6 +60,7 @@ export type UseAuthFilesDataResult = {
   deletingAll: boolean;
   statusUpdating: Record<string, boolean>;
   batchStatusUpdating: boolean;
+  clearingRuntimeSessions: boolean;
   claudeProbeJob: ClaudeProbeJob | null;
   claudeProbeRunning: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -79,6 +80,7 @@ export type UseAuthFilesDataResult = {
   batchDelete: (names: string[]) => void;
   probeClaudeAccounts: (names?: string[]) => Promise<void>;
   cancelClaudeProbe: () => Promise<void>;
+  clearClaudeRuntimeSessions: (names?: string[]) => void;
   refreshClaudeHealthForFiles: (names: string[]) => Promise<void>;
 };
 
@@ -94,6 +96,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [deletingAll, setDeletingAll] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
+  const [clearingRuntimeSessions, setClearingRuntimeSessions] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [claudeProbeJob, setClaudeProbeJob] = useState<ClaudeProbeJob | null>(null);
 
@@ -321,6 +324,45 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       showNotification(`取消检测失败: ${errorMessage}`, 'error');
     }
   }, [pollClaudeProbeJob, showNotification]);
+
+  const clearClaudeRuntimeSessions = useCallback(
+    (names?: string[]) => {
+      if (clearingRuntimeSessions) return;
+      const normalizedNames = Array.isArray(names)
+        ? Array.from(new Set(names.map((name) => name.trim()).filter(Boolean)))
+        : [];
+      const scoped = normalizedNames.length > 0;
+
+      showConfirmation({
+        title: scoped ? '清除所选会话占用' : '清除账号会话占用',
+        message: scoped
+          ? `确认清除 ${normalizedNames.length} 个账号的本地会话占用？这不会删除账号或认证文件。`
+          : '确认清除所有账号的本地会话占用？这不会删除账号或认证文件，只会释放号池本地的新会话占用计数。',
+        variant: 'secondary',
+        confirmText: '确认清除',
+        onConfirm: async () => {
+          setClearingRuntimeSessions(true);
+          try {
+            const result = await authFilesApi.clearRuntimeSessions({
+              provider: 'claude',
+              names: scoped ? normalizedNames : undefined,
+            });
+            await loadFiles();
+            showNotification(
+              `已清除 ${result.cleared_accounts ?? 0} 个账号、${result.cleared_sessions ?? 0} 个会话占用`,
+              'success'
+            );
+          } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            showNotification(`清除会话占用失败: ${errorMessage}`, 'error');
+          } finally {
+            setClearingRuntimeSessions(false);
+          }
+        },
+      });
+    },
+    [clearingRuntimeSessions, loadFiles, showConfirmation, showNotification]
+  );
 
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -794,6 +836,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     deletingAll,
     statusUpdating,
     batchStatusUpdating,
+    clearingRuntimeSessions,
     claudeProbeJob,
     claudeProbeRunning,
     fileInputRef,
@@ -813,6 +856,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     batchDelete,
     probeClaudeAccounts,
     cancelClaudeProbe,
+    clearClaudeRuntimeSessions,
     refreshClaudeHealthForFiles,
   };
 }

@@ -213,7 +213,7 @@ const DEFAULT_BATCH_FORM: BatchEditForm = {
   priority: '0',
   applyLimits: true,
   rpmLimit: '60',
-  maxSessions: '5',
+  maxSessions: '10',
   applyCloakMode: true,
   cloakMode: 'always',
   applyCacheUserId: true,
@@ -338,7 +338,7 @@ function readRuntimeStats(record: Record<string, unknown>) {
     rpmLimit: readNumber(record, ['rpm_limit', 'rpmLimit'], 60),
     currentRpm: readNumber(record, ['current_rpm', 'currentRpm'], 0),
     rpmResetAt: record.rpm_reset_at ?? record.rpmResetAt,
-    maxSessions: readNumber(record, ['max_sessions', 'maxSessions'], 5),
+    maxSessions: readNumber(record, ['max_sessions', 'maxSessions'], 10),
     activeSessions: readNumber(record, ['active_sessions', 'activeSessions'], 0),
     sessionResetAt: record.session_reset_at ?? record.sessionResetAt,
     lastUsedAt: record.last_used_at ?? record.lastUsedAt,
@@ -861,7 +861,7 @@ function makeEditForm(account: AuthFileItem): AccountEditForm {
     prefix: readString(record, ['prefix']),
     priority: readString(record, ['priority']),
     rpmLimit: readString(record, ['rpm_limit', 'rpmLimit']) || '60',
-    maxSessions: readString(record, ['max_sessions', 'maxSessions']) || '5',
+    maxSessions: readString(record, ['max_sessions', 'maxSessions']) || '10',
     note: readString(record, ['note']),
     cloakMode: readString(record, ['cloak_mode', 'cloakMode']) || 'always',
     cloakStrictMode: readBool(record, ['cloak_strict_mode', 'cloakStrictMode'], false),
@@ -1385,6 +1385,7 @@ export function DashboardPage() {
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
   const [batchForm, setBatchForm] = useState<BatchEditForm | null>(null);
   const [savingBatch, setSavingBatch] = useState(false);
+  const [clearingRuntimeSessions, setClearingRuntimeSessions] = useState(false);
   const [accountSearch, setAccountSearch] = useState('');
   const [accountStateFilter, setAccountStateFilter] = useState<AccountStateFilter>('all');
   const [accountProxyFilter, setAccountProxyFilter] = useState<AccountProxyFilter>('all');
@@ -2107,6 +2108,39 @@ export function DashboardPage() {
       showNotification(message, 'error');
     }
   }, [claudeProbeJob?.id, pollClaudeProbeJob, showNotification]);
+
+  const clearRuntimeSessions = useCallback(
+    async (names?: string[]) => {
+      if (clearingRuntimeSessions) return;
+      const normalizedNames = Array.from(new Set((names || []).map((name) => name.trim()).filter(Boolean)));
+      const scoped = normalizedNames.length > 0;
+      const message = scoped
+        ? `确定要清除 ${normalizedNames.length} 个选中账号的本地会话占用吗？此操作不会删除账号或认证文件。`
+        : '确定要清除所有账号的本地会话占用吗？此操作不会删除账号或认证文件。';
+      if (!window.confirm(message)) {
+        return;
+      }
+
+      setClearingRuntimeSessions(true);
+      try {
+        const result = await authFilesApi.clearRuntimeSessions({
+          provider: 'claude',
+          names: scoped ? normalizedNames : undefined,
+        });
+        await loadAccounts();
+        showNotification(
+          `已清除 ${result.cleared_accounts ?? 0} 个账号、${result.cleared_sessions ?? 0} 个会话占用`,
+          'success'
+        );
+      } catch (err: unknown) {
+        const messageText = err instanceof Error ? err.message : '清除会话占用失败';
+        showNotification(messageText, 'error');
+      } finally {
+        setClearingRuntimeSessions(false);
+      }
+    },
+    [clearingRuntimeSessions, loadAccounts, showNotification]
+  );
 
   const openBatchEditor = () => {
     if (selectedNames.length === 0) {
@@ -3270,10 +3304,28 @@ export function DashboardPage() {
             <Button
               variant="secondary"
               size="sm"
+              loading={clearingRuntimeSessions}
+              onClick={() => void clearRuntimeSessions()}
+              disabled={connectionStatus !== 'connected' || accounts.length === 0 || clearingRuntimeSessions}
+            >
+              清会话
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => void startClaudeProbe(selectedNames)}
               disabled={selectedNames.length === 0 || claudeProbeRunning}
             >
               检测选中
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={clearingRuntimeSessions}
+              onClick={() => void clearRuntimeSessions(selectedNames)}
+              disabled={selectedNames.length === 0 || clearingRuntimeSessions}
+            >
+              清选中会话
             </Button>
             {claudeProbeRunning && (
               <Button variant="ghost" size="sm" onClick={() => void cancelClaudeProbe()}>
@@ -3934,7 +3986,7 @@ export function DashboardPage() {
                     onChange={(event) =>
                       setBatchForm({ ...batchForm, maxSessions: event.target.value })
                     }
-                    placeholder="5"
+                    placeholder="10"
                   />
                 </div>
               </section>
@@ -4068,7 +4120,7 @@ export function DashboardPage() {
                 type="number"
                 value={editForm.maxSessions}
                 onChange={(event) => setEditForm({ ...editForm, maxSessions: event.target.value })}
-                placeholder="5"
+                placeholder="10"
                 hint="同一时间可绑定的真实下游会话数，0 表示不限制；无会话 ID 请求只做 5 分钟软粘滞，不占用会话槽。"
               />
               <div className={styles.selectField}>

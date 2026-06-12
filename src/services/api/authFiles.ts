@@ -55,6 +55,17 @@ export type ClaudeProbeJobRequest = {
   include_disabled?: boolean;
   concurrency?: number;
 };
+export type RuntimeSessionClearRequest = {
+  provider?: string;
+  names?: string[];
+  auth_ids?: string[];
+};
+export type RuntimeSessionClearResponse = {
+  status: string;
+  provider?: string;
+  cleared_accounts?: number;
+  cleared_sessions?: number;
+};
 export type AuthFileFieldsPatch = {
   prefix?: string;
   proxy_url?: string;
@@ -479,6 +490,9 @@ export const authFilesApi = {
 
   cancelClaudeProbeJob: (id: string) =>
     apiClient.post<ClaudeProbeJob>(`/auth-files/claude-probe-jobs/${encodeURIComponent(id)}/cancel`),
+
+  clearRuntimeSessions: (payload: RuntimeSessionClearRequest = {}) =>
+    apiClient.post<RuntimeSessionClearResponse>('/auth-files/runtime-sessions/clear', payload),
 
   uploadFiles: async (files: File[]): Promise<AuthFileBatchUploadResult> => {
     const requestedNames = files.map((file) => file.name);
