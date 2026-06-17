@@ -14,11 +14,16 @@ export interface ClaudeSessionImportStartRequest {
 export interface ClaudeSessionImportResult {
   session_key_hash: string;
   status: string;
+  import_action?: 'new_imported' | 'existing_updated' | string;
   reason?: string;
   auth_file?: string;
   email?: string;
   auth_source?: string;
   auth_method_label?: string;
+  plan_type?: string;
+  subscription_multiplier?: number;
+  subscription_precision?: string;
+  subscription_capacity_units?: number;
 }
 
 export interface ClaudeSessionImportJob {
@@ -32,12 +37,16 @@ export interface ClaudeSessionImportJob {
   finished_at?: string;
   total_processed: number;
   imported: number;
+  new_imported?: number;
+  existing_updated?: number;
   failed: number;
   duplicate: number;
   error?: string;
   failure_reasons?: Record<string, number>;
   rejected: number;
   rejected_reasons?: Record<string, number>;
+  new_plan_counts?: Record<string, number>;
+  existing_plan_counts?: Record<string, number>;
   results?: ClaudeSessionImportResult[];
 }
 

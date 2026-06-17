@@ -65,13 +65,14 @@ type AccountState =
   | 'authExpired'
   | 'subscriptionIssue'
   | 'requestError'
-  | 'disabled'
-  | 'unavailable';
+  | 'transientError'
+  | 'disabled';
 
 type AccountStateFilter = AccountState | 'all' | 'banned';
 type AccountProxyFilter = 'all' | 'withProxy' | 'defaultProxy' | 'direct';
 type AccountAuthFilter = 'all' | 'claude_code_cli' | 'claude_platform' | 'claude_setup_token' | 'unknown';
-type AccountSubscriptionFilter = 'all' | 'max' | 'pro' | 'team' | 'free' | 'unknown';
+type AccountSubscriptionFilter = 'all' | 'max' | 'max5x' | 'max20x' | 'pro' | 'team' | 'free' | 'unknown';
+type AccountPlanKey = Exclude<AccountSubscriptionFilter, 'all'>;
 type AccountViewMode = 'table' | 'cards';
 type AccountImportSource = 'manual' | 'bulk_session_import';
 
@@ -156,8 +157,8 @@ const ACCOUNT_STATE_FILTER_OPTIONS = [
   { value: 'rpmCooling', label: 'RPM 冷却' },
   { value: 'sessionFull', label: '新会话已满' },
   { value: 'requestError', label: '请求异常' },
+  { value: 'transientError', label: '临时错误' },
   { value: 'subscriptionIssue', label: '订阅异常' },
-  { value: 'unavailable', label: '不可用' },
   { value: 'disabled', label: '已停用' },
   { value: 'active', label: '可用' },
 ];
@@ -179,7 +180,9 @@ const ACCOUNT_AUTH_FILTER_OPTIONS = [
 
 const ACCOUNT_SUBSCRIPTION_FILTER_OPTIONS = [
   { value: 'all', label: '全部订阅' },
-  { value: 'max', label: 'Max' },
+  { value: 'max', label: 'Max 全部' },
+  { value: 'max5x', label: 'Max 5x' },
+  { value: 'max20x', label: 'Max 20x' },
   { value: 'pro', label: 'Pro' },
   { value: 'team', label: 'Team' },
   { value: 'free', label: 'Free' },
@@ -423,7 +426,7 @@ function claudePermanentAccountError(record: Record<string, unknown>): { code: s
   const upstreamMessage =
     parts.find((part) => part && !part.trim().startsWith('{') && !part.includes('_')) ||
     rawMessage ||
-    '上游账号不可用';
+    '上游账号临时错误';
   const safeMessage = sanitizeSensitiveText(upstreamMessage);
 
   if (combined.includes('account_banned')) {
@@ -537,6 +540,7 @@ function isAccountRequestBodyError(record: Record<string, unknown>): boolean {
 function getAccountState(account: AuthFileItem): AccountState {
   const record = account as Record<string, unknown>;
   const statusReason = readStatusReason(record);
+  const healthClass = readString(record, ['health_class', 'healthClass']).toLowerCase();
   if (
     statusReason === 'account_banned' ||
     statusReason === 'organization_disabled' ||
@@ -550,7 +554,11 @@ function getAccountState(account: AuthFileItem): AccountState {
   if (statusReason === 'session_full') return 'sessionFull';
   if (statusReason === 'subscription_issue') return 'subscriptionIssue';
   if (statusReason === 'upstream_error') return 'requestError';
-  if (statusReason === 'unavailable') return 'unavailable';
+  if (statusReason === 'transient_error' || statusReason === 'unavailable') return 'transientError';
+  if (healthClass === 'limit_cooling') return 'cooling';
+  if (healthClass === 'auth_error') return 'authExpired';
+  if (healthClass === 'permanent_error' || healthClass === 'manual_disabled') return 'disabled';
+  if (healthClass === 'transient_error') return 'transientError';
   if (account.disabled) return 'disabled';
   if (claudePermanentAccountError(record)) return 'disabled';
   if (isAccountAuthExpired(account)) return 'authExpired';
@@ -561,7 +569,7 @@ function getAccountState(account: AuthFileItem): AccountState {
   const status = String(account.status ?? '').trim().toLowerCase();
   const message = String(account.statusMessage ?? record.status_message ?? '').trim().toLowerCase();
   if (account.unavailable || status.includes('error') || status.includes('unavailable')) {
-    return 'unavailable';
+    return 'transientError';
   }
   if (message.includes('429') || message.includes('quota') || message.includes('rate')) {
     return 'cooling';
@@ -597,10 +605,10 @@ function accountStateLabel(state: AccountState): string {
       return '订阅异常';
     case 'requestError':
       return '请求异常';
+    case 'transientError':
+      return '临时错误';
     case 'disabled':
       return '已停用';
-    case 'unavailable':
-      return '不可用';
   }
 }
 
@@ -773,7 +781,9 @@ function accountMatchesSubscriptionFilter(
   filter: AccountSubscriptionFilter
 ): boolean {
   if (filter === 'all') return true;
-  return accountPlanBadge(record, quotaDetail).tone === filter;
+  const planKey = accountPlanFilterKey(record, quotaDetail);
+  if (filter === 'max') return planKey === 'max' || planKey === 'max5x' || planKey === 'max20x';
+  return planKey === filter;
 }
 
 function accountSearchText(account: AuthFileItem): string {
@@ -979,22 +989,293 @@ function resolveClaudePlanLabel(profile: ClaudeProfileResponse | null): string {
   return '未知套餐';
 }
 
-function normalizePlanBadge(rawPlan: string, detail?: string): AccountPlanBadge {
-  const normalized = rawPlan.trim().toLowerCase();
-  switch (normalized) {
+function planMetadata(record: Record<string, unknown>): Record<string, unknown> {
+  return readRecord(record.metadata) ?? {};
+}
+
+function rawPersistedPlan(record: Record<string, unknown>): string {
+  const metadata = planMetadata(record);
+  const attributes = readRecord(record.attributes);
+  return (
+    readString(record, ['plan_type', 'planType']) ||
+    readString(metadata, ['plan_type', 'planType']) ||
+    readString(attributes ?? {}, ['plan_type', 'planType']) ||
+    readString(record, ['subscription_plan', 'subscriptionPlan']) ||
+    readString(metadata, ['subscription_plan', 'subscriptionPlan'])
+  );
+}
+
+function normalizePlanKey(rawPlan: string): AccountPlanKey {
+  const compact = rawPlan.trim().toLowerCase().replace(/[\s_-]+/g, '');
+  if (!compact) return 'unknown';
+  if (compact.includes('max') && compact.includes('20x')) return 'max20x';
+  if (compact.includes('max') && compact.includes('5x')) return 'max5x';
+  if (compact === 'max' || compact === 'planmax' || compact.includes('claudemax')) return 'max';
+  if (compact === 'pro' || compact === 'planpro' || compact.includes('claudepro')) return 'pro';
+  if (
+    compact === 'team' ||
+    compact === 'business' ||
+    compact === 'go' ||
+    compact === 'planteam' ||
+    compact.includes('claudeteam')
+  ) {
+    return 'team';
+  }
+  if (compact === 'free' || compact === 'planfree') return 'free';
+  return 'unknown';
+}
+
+function accountPlanFilterKey(
+  record: Record<string, unknown>,
+  quotaDetail?: AccountQuotaDetail
+): AccountPlanKey {
+  if (quotaDetail?.status === 'success') {
+    const quotaPlan = normalizePlanKey(quotaDetail.planLabel || '');
+    if (quotaPlan !== 'unknown') return quotaPlan;
+  }
+  return normalizePlanKey(rawPersistedPlan(record));
+}
+
+interface AccountCapacityInfo {
+  known: boolean;
+  units: number;
+  unknownMax: boolean;
+  planKey: AccountPlanKey;
+}
+
+interface CapacityRecoveryBucket {
+  recoverAt: number;
+  units: number;
+  accounts: number;
+  proUnits: number;
+  max5xUnits: number;
+  max20xUnits: number;
+}
+
+interface AccountCapacityStats {
+  knownTotalUnits: number;
+  availableUnits: number;
+  coolingUnits: number;
+  unknownMaxAccounts: number;
+  recoveryBuckets: CapacityRecoveryBucket[];
+}
+
+function accountCapacityInfo(
+  record: Record<string, unknown>,
+  quotaDetail?: AccountQuotaDetail
+): AccountCapacityInfo {
+  const metadata = planMetadata(record);
+  const planKey = accountPlanFilterKey(record, quotaDetail);
+  const explicitUnits =
+    readOptionalNumber(record, ['subscription_capacity_units', 'subscriptionCapacityUnits']) ??
+    readOptionalNumber(metadata, ['subscription_capacity_units', 'subscriptionCapacityUnits']);
+  const explicitKnown =
+    normalizeFlagValue(record.subscription_capacity_known ?? record.subscriptionCapacityKnown) ??
+    normalizeFlagValue(metadata.subscription_capacity_known ?? metadata.subscriptionCapacityKnown);
+  const explicitUnknownMax =
+    normalizeFlagValue(record.subscription_unknown_max ?? record.subscriptionUnknownMax) ??
+    normalizeFlagValue(metadata.subscription_unknown_max ?? metadata.subscriptionUnknownMax);
+
+  if (explicitKnown === true && explicitUnits !== null && explicitUnits >= 0) {
+    return {
+      known: true,
+      units: explicitUnits,
+      unknownMax: Boolean(explicitUnknownMax),
+      planKey,
+    };
+  }
+  if (explicitKnown === false) {
+    return {
+      known: false,
+      units: 0,
+      unknownMax: Boolean(explicitUnknownMax) || planKey === 'max',
+      planKey,
+    };
+  }
+
+  switch (planKey) {
+    case 'pro':
+      return { known: true, units: 1, unknownMax: false, planKey };
+    case 'max5x':
+      return { known: true, units: 5, unknownMax: false, planKey };
+    case 'max20x':
+      return { known: true, units: 20, unknownMax: false, planKey };
+    case 'free':
+      return { known: true, units: 0, unknownMax: false, planKey };
     case 'max':
-    case 'plan_max':
+      return { known: false, units: 0, unknownMax: true, planKey };
+    default:
+      return { known: false, units: 0, unknownMax: false, planKey };
+  }
+}
+
+function accountRecoverAt(record: Record<string, unknown>): number {
+  const quota = accountQuotaInfo(record);
+  const candidates = [
+    quota.recoverAt,
+    record.recover_at,
+    record.recoverAt,
+    record.next_retry_after,
+    record.nextRetryAfter,
+    record.rpm_reset_at,
+    record.rpmResetAt,
+    record.session_reset_at,
+    record.sessionResetAt,
+  ]
+    .map(parseDateMs)
+    .filter((value) => value > Date.now());
+  return candidates.length > 0 ? Math.min(...candidates) : 0;
+}
+
+function buildAccountCapacityStats(
+  accounts: AuthFileItem[],
+  quotaByAccount: Record<string, AccountQuotaDetail>
+): AccountCapacityStats {
+  const now = Date.now();
+  const recoveryByMinute = new Map<number, CapacityRecoveryBucket>();
+
+  const base = accounts.reduce<AccountCapacityStats>(
+    (totals, account) => {
+      const record = account as Record<string, unknown>;
+      const name = getAccountName(account);
+      const quotaDetail = accountQuotaDetail(account, name ? quotaByAccount[name] : undefined);
+      const quotaCoolingWindow = quotaDetailCoolingWindow(quotaDetail);
+      const state = quotaCoolingWindow ? 'quotaCooling' : getAccountState(account);
+      const capacity = accountCapacityInfo(record, quotaDetail);
+
+      if (capacity.unknownMax) totals.unknownMaxAccounts += 1;
+      if (!capacity.known) return totals;
+
+      totals.knownTotalUnits += capacity.units;
+      if (state === 'active') {
+        totals.availableUnits += capacity.units;
+        return totals;
+      }
+      if (state === 'cooling' || state === 'quotaCooling' || state === 'rpmCooling' || state === 'sessionFull') {
+        totals.coolingUnits += capacity.units;
+        const recoverAt = accountRecoverAt(record);
+        if (recoverAt > now && capacity.units > 0) {
+          const bucketKey = Math.floor(recoverAt / 60000) * 60000;
+          const bucket =
+            recoveryByMinute.get(bucketKey) ??
+            { recoverAt: bucketKey, units: 0, accounts: 0, proUnits: 0, max5xUnits: 0, max20xUnits: 0 };
+          bucket.units += capacity.units;
+          bucket.accounts += 1;
+          if (capacity.planKey === 'pro') bucket.proUnits += capacity.units;
+          if (capacity.planKey === 'max5x') bucket.max5xUnits += capacity.units;
+          if (capacity.planKey === 'max20x') bucket.max20xUnits += capacity.units;
+          recoveryByMinute.set(bucketKey, bucket);
+        }
+      }
+      return totals;
+    },
+    {
+      knownTotalUnits: 0,
+      availableUnits: 0,
+      coolingUnits: 0,
+      unknownMaxAccounts: 0,
+      recoveryBuckets: [],
+    }
+  );
+
+  return {
+    ...base,
+    recoveryBuckets: Array.from(recoveryByMinute.values())
+      .sort((left, right) => left.recoverAt - right.recoverAt)
+      .slice(0, 8),
+  };
+}
+
+function formatRecoveryDelay(recoverAt: number): string {
+  const diffMs = recoverAt - Date.now();
+  if (diffMs <= 0) return '即将';
+  const minutes = Math.max(1, Math.round(diffMs / 60000));
+  if (minutes < 60) return `${minutes}m 后`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0 ? `${hours}h${remainingMinutes}m 后` : `${hours}h 后`;
+}
+
+function formatRecoveryBucketDetail(bucket: CapacityRecoveryBucket): string {
+  const parts = [
+    bucket.max20xUnits > 0 ? `Max20x +${bucket.max20xUnits}` : '',
+    bucket.max5xUnits > 0 ? `Max5x +${bucket.max5xUnits}` : '',
+    bucket.proUnits > 0 ? `Pro +${bucket.proUnits}` : '',
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : `${bucket.accounts} 个账号`;
+}
+
+function subscriptionPlanLabel(plan: string): string {
+  switch (normalizePlanKey(plan)) {
+    case 'max20x':
+      return 'Max 20x';
+    case 'max5x':
+      return 'Max 5x';
+    case 'max':
+      return 'Max';
+    case 'pro':
+      return 'Pro';
+    case 'team':
+      return 'Team';
+    case 'free':
+      return 'Free';
+    default:
+      return plan.trim() || '未知';
+  }
+}
+
+function formatSessionImportPlanCounts(counts?: Record<string, number>): string {
+  if (!counts) return '';
+  const rank: Record<string, number> = {
+    max20x: 0,
+    max5x: 1,
+    max: 2,
+    pro: 3,
+    team: 4,
+    free: 5,
+    unknown: 6,
+  };
+  return Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .sort((left, right) => {
+      const leftKey = normalizePlanKey(left[0]);
+      const rightKey = normalizePlanKey(right[0]);
+      return (rank[leftKey] ?? 99) - (rank[rightKey] ?? 99);
+    })
+    .map(([plan, count]) => `${subscriptionPlanLabel(plan)} ${count}`)
+    .join(' · ');
+}
+
+type SessionImportResultItem = NonNullable<ClaudeSessionImportJob['results']>[number];
+
+function sessionImportResultLabel(result: SessionImportResultItem): string {
+  if (result.status !== 'imported') return '失败';
+  return result.import_action === 'existing_updated' ? '已更新' : '新导入';
+}
+
+function sessionImportResultDetail(result: SessionImportResultItem): string {
+  const plan = result.plan_type ? subscriptionPlanLabel(result.plan_type) : '';
+  const units =
+    typeof result.subscription_capacity_units === 'number' && result.subscription_capacity_units > 0
+      ? `+${result.subscription_capacity_units}`
+      : '';
+  return [result.auth_method_label, plan, units].filter(Boolean).join(' · ');
+}
+
+function normalizePlanBadge(rawPlan: string, detail?: string): AccountPlanBadge {
+  const planKey = normalizePlanKey(rawPlan);
+  switch (planKey) {
+    case 'max20x':
+      return { label: 'Max 20x', tone: 'max', detail };
+    case 'max5x':
+      return { label: 'Max 5x', tone: 'max', detail };
+    case 'max':
       return { label: 'Max', tone: 'max', detail };
     case 'pro':
-    case 'plan_pro':
       return { label: 'Pro', tone: 'pro', detail };
     case 'team':
-    case 'business':
-    case 'go':
-    case 'plan_team':
       return { label: 'Team', tone: 'team', detail };
     case 'free':
-    case 'plan_free':
       return { label: 'Free', tone: 'free', detail };
     default:
       return { label: rawPlan.trim() || '待刷新', tone: 'unknown', detail };
@@ -1018,12 +1299,8 @@ function accountPlanBadge(
     );
   }
 
-  const metadata = readRecord(record.metadata);
-  const attributes = readRecord(record.attributes);
-  const rawPlan =
-    readString(record, ['plan_type', 'planType']) ||
-    readString(metadata ?? {}, ['plan_type', 'planType']) ||
-    readString(attributes ?? {}, ['plan_type', 'planType']);
+  const metadata = planMetadata(record);
+  const rawPlan = rawPersistedPlan(record);
   const persistedDetail =
     readString(record, ['subscription_status', 'subscriptionStatus']) ||
     readString(metadata ?? {}, ['subscription_status', 'subscriptionStatus']) ||
@@ -1179,7 +1456,7 @@ function healthStatusLabel(value: unknown): string {
     case 'request_error':
       return '请求异常';
     case 'unavailable':
-      return '不可用';
+      return '临时错误';
     case 'disabled':
       return '已停用';
     case 'error':
@@ -1584,6 +1861,7 @@ export function DashboardPage() {
       },
       { requests: 0, success: 0, rateLimited: 0 }
     );
+    const capacity = buildAccountCapacityStats(accounts, quotaByAccount);
 
     return {
       total: accounts.length,
@@ -1591,9 +1869,9 @@ export function DashboardPage() {
       cooling: states.filter(
         (state) => state === 'cooling' || state === 'quotaCooling' || state === 'rpmCooling'
       ).length,
-      unavailable: states.filter(
+      attention: states.filter(
         (state) =>
-          state === 'unavailable' ||
+          state === 'transientError' ||
           state === 'authExpired' ||
           state === 'requestError' ||
           state === 'subscriptionIssue' ||
@@ -1606,6 +1884,7 @@ export function DashboardPage() {
         quality24h.requests > 0 ? Math.round((quality24h.success / quality24h.requests) * 100) : 100,
       runtimeTotals,
       quality24h,
+      capacity,
     };
   }, [accounts, quotaByAccount]);
 
@@ -1711,8 +1990,8 @@ export function DashboardPage() {
         authExpired: 0,
         subscriptionIssue: 0,
         requestError: 0,
+        transientError: 0,
         disabled: 0,
-        unavailable: 0,
       }
     );
 
@@ -1818,7 +2097,7 @@ export function DashboardPage() {
       {
         label: '冷却窗口',
         value: `${configText(raw['max-retry-interval'], '30')} 秒`,
-        detail: '429 或上游不可用后的最小保护间隔',
+        detail: '429 或临时上游错误后的最小保护间隔',
       },
       {
         label: '切换策略',
@@ -2474,6 +2753,10 @@ export function DashboardPage() {
   const sessionImportFailures = Object.entries(sessionImportJob?.failure_reasons ?? {})
     .sort((left, right) => right[1] - left[1])
     .slice(0, 6);
+  const sessionImportNewImported = sessionImportJob?.new_imported ?? sessionImportJob?.imported ?? 0;
+  const sessionImportExistingUpdated = sessionImportJob?.existing_updated ?? 0;
+  const sessionImportNewPlanSummary = formatSessionImportPlanCounts(sessionImportJob?.new_plan_counts);
+  const sessionImportExistingPlanSummary = formatSessionImportPlanCounts(sessionImportJob?.existing_plan_counts);
   const recentSessionImportResults = (sessionImportJob?.results ?? []).slice(-6).reverse();
   const manualSessionKeys = useMemo(() => splitSessionKeyDraft(manualSessionKeyDraft), [manualSessionKeyDraft]);
   const renderPortal = (content: ReactNode) =>
@@ -2748,10 +3031,31 @@ export function DashboardPage() {
         />
         <StatCard
           icon={<IconShield size={22} />}
+          label="剩余容量"
+          value={
+            stats.capacity.knownTotalUnits > 0
+              ? `${stats.capacity.availableUnits}/${stats.capacity.knownTotalUnits}`
+              : '--'
+          }
+          detail={
+            stats.capacity.knownTotalUnits > 0
+              ? `${pct(stats.capacity.availableUnits, stats.capacity.knownTotalUnits)}% 可用${
+                  stats.capacity.unknownMaxAccounts > 0
+                    ? `，未知 Max ${stats.capacity.unknownMaxAccounts} 个未计入`
+                    : ''
+                }`
+              : stats.capacity.unknownMaxAccounts > 0
+                ? `未知 Max ${stats.capacity.unknownMaxAccounts} 个未计入总量`
+                : '等待重新认证或导入后识别订阅'
+          }
+          tone={stats.capacity.knownTotalUnits > 0 && stats.capacity.availableUnits === 0 ? 'warn' : 'neutral'}
+        />
+        <StatCard
+          icon={<IconShield size={22} />}
           label="异常保护"
-          value={stats.unavailable + stats.cooling}
-          detail="429、认证失败或不可用会被隔离"
-          tone={stats.unavailable + stats.cooling > 0 ? 'warn' : 'neutral'}
+          value={stats.attention + stats.cooling}
+          detail="限额、认证错误或临时上游错误会被隔离"
+          tone={stats.attention + stats.cooling > 0 ? 'warn' : 'neutral'}
         />
         <StatCard
           icon={<IconBot size={22} />}
@@ -2778,6 +3082,7 @@ export function DashboardPage() {
               <strong>RPM {operationsOverview.stateCounts.rpmCooling}</strong>
               <strong>新会话已满 {operationsOverview.stateCounts.sessionFull}</strong>
               <strong>认证异常 {operationsOverview.stateCounts.authExpired}</strong>
+              <strong>临时错误 {operationsOverview.stateCounts.transientError}</strong>
               <strong>停用 {operationsOverview.stateCounts.disabled}</strong>
             </div>
           </div>
@@ -2816,6 +3121,27 @@ export function DashboardPage() {
                 <i style={{ width: `${operationsOverview.proxyCoverage}%` }} />
               </div>
             </div>
+          </div>
+          <div className={styles.opsColumn}>
+            <span>容量恢复</span>
+            <div className={styles.statusMatrix}>
+              <strong>已知总量 {stats.capacity.knownTotalUnits}</strong>
+              <strong>当前可用 {stats.capacity.availableUnits}</strong>
+              <strong>冷却中 {stats.capacity.coolingUnits}</strong>
+              <strong>未知 Max {stats.capacity.unknownMaxAccounts}</strong>
+            </div>
+            {stats.capacity.recoveryBuckets.length === 0 ? (
+              <div className={styles.opsEmpty}>暂无明确恢复时间</div>
+            ) : (
+              <div className={styles.capacityRecoveryList}>
+                {stats.capacity.recoveryBuckets.map((bucket) => (
+                  <div key={bucket.recoverAt} className={styles.capacityRecoveryItem}>
+                    <strong>{formatRecoveryDelay(bucket.recoverAt)} +{bucket.units}</strong>
+                    <span>{formatRecoveryBucketDetail(bucket)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className={styles.opsColumn}>
             <span>风险队列</span>
@@ -3152,13 +3478,21 @@ export function DashboardPage() {
                 </div>
                 <div className={styles.sessionImportStats}>
                   <span>处理 {sessionImportJob.total_processed}</span>
-                  <span>导入 {sessionImportJob.imported}</span>
+                  <span>成功 {sessionImportJob.imported}</span>
+                  <span>新账号 {sessionImportNewImported}</span>
+                  <span>已存在更新 {sessionImportExistingUpdated}</span>
                   <span>失败 {sessionImportJob.failed}</span>
                   <span>重复 {sessionImportJob.duplicate}</span>
                   {sessionImportJob.rejected > 0 && (
-                    <span>已拒绝（上游不可用） {sessionImportJob.rejected}</span>
+                    <span>已拒绝（上游验证未通过） {sessionImportJob.rejected}</span>
                   )}
                 </div>
+                {(sessionImportNewPlanSummary || sessionImportExistingPlanSummary) && (
+                  <div className={styles.sessionImportReasons}>
+                    {sessionImportNewPlanSummary && <span>新账号：{sessionImportNewPlanSummary}</span>}
+                    {sessionImportExistingPlanSummary && <span>已存在：{sessionImportExistingPlanSummary}</span>}
+                  </div>
+                )}
                 {sessionImportJob.error && <div className={styles.sessionImportError}>{sessionImportJob.error}</div>}
                 {sessionImportFailures.length > 0 && (
                   <div className={styles.sessionImportReasons}>
@@ -3180,13 +3514,16 @@ export function DashboardPage() {
                 )}
                 {recentSessionImportResults.length > 0 && (
                   <div className={styles.sessionImportResults}>
-                    {recentSessionImportResults.map((result) => (
-                      <div key={`${result.session_key_hash}-${result.status}-${result.auth_file || result.reason}`}>
-                        <strong>{result.status === 'imported' ? '已导入' : '失败'}</strong>
-                        <span>{result.email || result.reason || result.auth_file || result.session_key_hash}</span>
-                        {result.auth_method_label && <small>{result.auth_method_label}</small>}
-                      </div>
-                    ))}
+                    {recentSessionImportResults.map((result) => {
+                      const detail = sessionImportResultDetail(result);
+                      return (
+                        <div key={`${result.session_key_hash}-${result.status}-${result.auth_file || result.reason}`}>
+                          <strong>{sessionImportResultLabel(result)}</strong>
+                          <span>{result.email || result.reason || result.auth_file || result.session_key_hash}</span>
+                          {detail && <small>{detail}</small>}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

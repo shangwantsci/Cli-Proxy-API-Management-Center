@@ -391,7 +391,20 @@
   }
 }
 
-.opsGrid,
+.opsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: $spacing-md;
+
+  @media (max-width: 1180px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 720px) {
+    grid-template-columns: 1fr;
+  }
+}
+
 .mimicryGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -689,6 +702,38 @@
   color: var(--text-secondary);
   background: var(--bg-primary);
   font-size: 12px;
+}
+
+.capacityRecoveryList {
+  display: grid;
+  gap: 7px;
+  margin-top: $spacing-sm;
+}
+
+.capacityRecoveryItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  padding: 8px 10px;
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+
+  strong {
+    color: var(--text-primary);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .riskList {
@@ -1478,7 +1523,8 @@
 .unavailable,
 .authExpired,
 .subscriptionIssue,
-.requestError {
+.requestError,
+.transientError {
   color: $error-color;
   border-color: rgba($error-color, 0.34);
   background: rgba($error-color, 0.1);
